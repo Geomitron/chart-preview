@@ -167,7 +167,11 @@ export class ChartPreview {
     chartPreview.camera = new ChartCamera(config.container);
     chartPreview.renderer = new ChartRenderer(config.container);
     chartPreview.audioManager = await (isAudioContextSupported()
-      ? AudioManager.create(config.audioFiles, config.startDelayMs)
+      ? AudioManager.create(
+          config.audioFiles,
+          config.startDelayMs,
+          config.audioLengthMs
+        )
       : SilentAudioManager.create(config.startDelayMs, config.audioLengthMs));
     chartPreview.audioManager.on("end", () =>
       chartPreview.eventEmitter.emit("end")
@@ -389,10 +393,12 @@ class AudioManager {
   private lastSeekChartTimeMs = 0;
   private lastAudioCtxCurrentTime = 0; // Necessary because audioCtx.currentTime doesn't reset to 0 on seek
   private audioLengthMs: number = 0;
+  private endEventTimeout: ReturnType<typeof setTimeout> | null = null;
 
   private constructor(
     private audioFiles: Uint8Array[],
-    private startDelayMs: number
+    private startDelayMs: number,
+    private fallbackAudioLengthMs: number
   ) {
     const ctx = getSharedAudioContext();
     if (!ctx) {
@@ -405,9 +411,18 @@ class AudioManager {
   /**
    * @param audioFiles The `Uint8Array[]` of the audio files to be played.
    * @param startDelayMs The amount of time to delay the start of the audio. (can be negative)
+   * @param fallbackAudioLengthMs The fallback audio length to use if no audio files are provided.
    */
-  static async create(audioFiles: Uint8Array[], startDelayMs: number) {
-    const audioManager = new AudioManager(audioFiles, startDelayMs);
+  static async create(
+    audioFiles: Uint8Array[],
+    startDelayMs: number,
+    fallbackAudioLengthMs: number
+  ) {
+    const audioManager = new AudioManager(
+      audioFiles,
+      startDelayMs,
+      fallbackAudioLengthMs
+    );
     await audioManager.initAudio();
     return audioManager;
   }
@@ -456,7 +471,16 @@ class AudioManager {
 
   /** Nonnegative number of milliseconds representing when the audio ends (and when the chart preview ends). */
   get chartEndTimeMs() {
-    return Math.max(this.startDelayMs + this.audioLengthMs, 0);
+    // Calculate the theoretical end time based on start delay + audio length
+    const theoreticalEndTime = this.startDelayMs + this.audioLengthMs;
+    // Ensure we always have a positive end time - use audio length as minimum if startDelay is extremely negative
+    // This handles edge cases where chart metadata has invalid/extreme delay values
+    return Math.max(
+      theoreticalEndTime,
+      this.audioLengthMs,
+      this.fallbackAudioLengthMs,
+      0
+    );
   }
 
   async play() {
@@ -468,15 +492,34 @@ class AudioManager {
     if (this.audioCtx.state === "suspended") {
       await this.audioCtx.resume();
     }
+    // Restart end event timeout for charts without audio
+    if (this.audioSources.length === 0 && !this.endEventTimeout) {
+      const remainingMs = this.chartEndTimeMs - this.chartCurrentTimeMs;
+      if (remainingMs > 0) {
+        this.endEventTimeout = setTimeout(() => {
+          this.eventEmitter.emit("end");
+        }, remainingMs);
+      }
+    }
   }
   async pause() {
     if (this.audioCtx.state === "running") {
       await this.audioCtx.suspend();
     }
+    // Clear end event timeout when pausing
+    if (this.endEventTimeout) {
+      clearTimeout(this.endEventTimeout);
+      this.endEventTimeout = null;
+    }
   }
 
   closeAudio() {
     this.eventEmitter.removeAllListeners();
+    // Clear end event timeout
+    if (this.endEventTimeout) {
+      clearTimeout(this.endEventTimeout);
+      this.endEventTimeout = null;
+    }
     // Stop all audio sources
     for (const source of this.audioSources) {
       // Remove onended handler before stopping to prevent false "end" events
@@ -515,8 +558,14 @@ class AudioManager {
         this.audioCtx.decodeAudioData(file.slice(0).buffer)
       )
     );
+
+    // Use fallback if no audio files or if calculated duration is invalid
+    const calculatedLengthMs =
+      audioBuffers.length > 0
+        ? Math.max(...audioBuffers.map((b) => b.duration)) * 1000
+        : 0;
     this.audioLengthMs =
-      Math.max(...audioBuffers.map((b) => b.duration)) * 1000;
+      calculatedLengthMs > 0 ? calculatedLengthMs : this.fallbackAudioLengthMs;
 
     this.gainNode = this.audioCtx.createGain();
     this.gainNode.gain.value = this._volume;
@@ -525,6 +574,23 @@ class AudioManager {
     let endedCount = 0;
     const audioStartOffsetSeconds =
       (this.lastSeekChartTimeMs - this.startDelayMs) / 1000;
+
+    // If no audio files, use a timeout to emit "end" event like SilentAudioManager does
+    if (audioBuffers.length === 0) {
+      // Clear any existing timeout
+      if (this.endEventTimeout) {
+        clearTimeout(this.endEventTimeout);
+        this.endEventTimeout = null;
+      }
+      // Schedule end event based on remaining time
+      const remainingMs = this.chartEndTimeMs - this.lastSeekChartTimeMs;
+      if (remainingMs > 0) {
+        this.endEventTimeout = setTimeout(() => {
+          this.eventEmitter.emit("end");
+        }, remainingMs);
+      }
+    }
+
     for (const audioBuffer of audioBuffers) {
       const source = this.audioCtx.createBufferSource();
       source.buffer = audioBuffer;
@@ -537,6 +603,10 @@ class AudioManager {
       source.connect(this.gainNode!);
       // When using a shared AudioContext, we need to schedule relative to the current time,
       // not absolute time 0, since the context may have been running for a while
+      //
+      // audioStartOffsetSeconds calculation:
+      // - Positive value: Start audio from this position (audio is "behind" chart time)
+      // - Negative value: Delay audio start by |value| seconds (audio hasn't started yet at chart time 0)
       const delaySeconds = Math.abs(Math.min(audioStartOffsetSeconds, 0));
       const when = this.audioCtx.currentTime + delaySeconds;
       const offset = Math.max(audioStartOffsetSeconds, 0);
@@ -555,6 +625,12 @@ class AudioManager {
     // (chartCurrentTimeMs is calculated from audioCtx.currentTime)
     if (this.audioCtx.state === "running") {
       await this.audioCtx.suspend();
+    }
+
+    // Clear end event timeout when seeking
+    if (this.endEventTimeout) {
+      clearTimeout(this.endEventTimeout);
+      this.endEventTimeout = null;
     }
 
     // Stop existing audio sources
@@ -635,7 +711,10 @@ class SilentAudioManager {
   }
   /** Nonnegative number of milliseconds representing when the audio ends (and when the chart preview ends). */
   get chartEndTimeMs() {
-    return Math.max(this.startDelayMs + this.audioLengthMs, 0);
+    // Calculate the theoretical end time based on start delay + audio length
+    const theoreticalEndTime = this.startDelayMs + this.audioLengthMs;
+    // Ensure we always have a positive end time - use audio length as minimum if startDelay is extremely negative
+    return Math.max(theoreticalEndTime, this.audioLengthMs, 0);
   }
 
   async play() {
