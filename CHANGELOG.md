@@ -1,5 +1,11 @@
 # chart-preview
 
+## 1.2.0
+
+### Minor Changes
+
+- 95d0918: Add support for animated note textures and improve fullscreen handling
+
 ## 1.1.0
 
 ### Minor Changes
