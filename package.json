@@ -1,0 +1,57 @@
+{
+	"name": "chart-preview",
+	"version": "1.0.0",
+	"author": "Geo",
+	"license": "MIT",
+	"main": "dist/index.js",
+	"module": "dist/index.mjs",
+	"types": "dist/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./dist/index.d.ts",
+			"import": "./dist/index.mjs",
+			"require": "./dist/index.js"
+		}
+	},
+	"sideEffects": [
+		"./dist/index.mjs",
+		"./dist/index.js"
+	],
+	"description": "A 3D chart preview player for rhythm games like Clone Hero. Renders chart files as an interactive video-like preview using THREE.js.",
+	"scripts": {
+		"build": "tsup src/index.ts --format cjs,esm --dts",
+		"release": "npm run build && changeset publish",
+		"dev": "vite dev",
+		"lint": "tsc"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+ssh://git@github.com/Geomitron/chart-preview.git"
+	},
+	"bugs": {
+		"url": "https://github.com/Geomitron/chart-preview/issues"
+	},
+	"homepage": "https://github.com/Geomitron/chart-preview#readme",
+	"keywords": [
+		"clone-hero",
+		"chart",
+		"preview",
+		"rhythm-game",
+		"three.js",
+		"3d",
+		"visualization"
+	],
+	"dependencies": {
+		"eventemitter3": "^5.0.1",
+		"parse-sng": "^4.0.3",
+		"scan-chart": "^7.0.1",
+		"three": "^0.170.0"
+	},
+	"devDependencies": {
+		"@changesets/cli": "^2.26.1",
+		"@types/three": "^0.170.0",
+		"tsup": "^6.7.0",
+		"typescript": "^5.9.2",
+		"vite": "^6.1.0"
+	}
+}

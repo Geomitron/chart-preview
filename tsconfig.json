@@ -1,0 +1,26 @@
+{
+	"compilerOptions": {
+		"target": "ES2020",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"esModuleInterop": true,
+		"declaration": true,
+		"emitDeclarationOnly": false,
+		"allowSyntheticDefaultImports": true,
+		"sourceMap": true,
+		"outDir": "./dist",
+		"baseUrl": "./",
+		"skipLibCheck": true,
+		"strictNullChecks": true,
+		"noImplicitAny": true,
+		"downlevelIteration": true,
+		"strictBindCallApply": true,
+		"forceConsistentCasingInFileNames": true,
+		"noFallthroughCasesInSwitch": true,
+		"noErrorTruncation": true,
+		"noEmit": true,
+		"lib": ["ES2020", "DOM", "DOM.Iterable"]
+	},
+	"include": ["src/**/*"],
+	"exclude": ["node_modules", "dist", "dev"]
+}
