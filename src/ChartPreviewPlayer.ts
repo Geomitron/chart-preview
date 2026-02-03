@@ -57,7 +57,6 @@ const STYLES = `
 	--accent-color: #3b82f6;
 	--text-color: #e0e0e0;
 	--text-muted: #aaa;
-	--text-idle: #666;
 	--error-color: #ef4444;
 	--shadow-color: rgba(0, 0, 0, 0.3);
 
@@ -129,8 +128,8 @@ const STYLES = `
 	align-items: center;
 	justify-content: center;
 	height: 40px;
-	width: 38px;
-	padding: 8px;
+	width: 32px;
+	padding: 6px;
 	transition: background 0.15s;
 	flex-shrink: 0;
 }
@@ -215,10 +214,10 @@ const STYLES = `
 .timestamp {
 	color: var(--text-muted);
 	font-size: 12px;
-	padding: 0 8px;
+	padding: 0 2px;
 	white-space: nowrap;
 	flex-shrink: 0;
-	min-width: 85px;
+	min-width: 70px;
 	text-align: center;
 }
 
@@ -226,7 +225,7 @@ const STYLES = `
 	flex: 1;
 	display: flex;
 	align-items: center;
-	padding: 0 8px;
+	padding: 0 4px;
 	min-width: 0;
 }
 
@@ -266,11 +265,6 @@ const STYLES = `
 .seek-bar:disabled {
 	opacity: 0.5;
 	cursor: not-allowed;
-}
-
-.idle-message {
-	color: var(--text-idle);
-	font-size: 14px;
 }
 
 .error-message {
@@ -379,7 +373,6 @@ export class ChartPreviewPlayer extends HTMLElement {
 			<style>${STYLES}</style>
 			<div class="player-container">
 				<div class="preview-viewport">
-					<span class="idle-message">Click play to start</span>
 				</div>
 				<div class="controls">
 					<button class="control-btn play-btn" aria-label="Play" disabled>
@@ -587,10 +580,6 @@ export class ChartPreviewPlayer extends HTMLElement {
   private prepareForLoading(): void {
     this.setState("loading");
 
-    // Remove idle message
-    const idleMessage = this.viewport.querySelector(".idle-message");
-    if (idleMessage) idleMessage.remove();
-
     // Remove error message if present
     const errorMessage = this.viewport.querySelector(".error-message");
     if (errorMessage) errorMessage.remove();
@@ -644,7 +633,7 @@ export class ChartPreviewPlayer extends HTMLElement {
   private updatePlayButton() {
     switch (this._state) {
       case "idle":
-        this.playBtn.disabled = true;
+        this.playBtn.disabled = false;
         this.playBtn.innerHTML = ICONS.play;
         this.playBtn.setAttribute("aria-label", "Play");
         break;

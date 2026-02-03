@@ -387,6 +387,7 @@ class AudioManager {
   private eventEmitter = new EventEmitter();
 
   private audioCtx: AudioContext;
+  private audioBuffers: AudioBuffer[] = [];
   private gainNode: GainNode | null = null;
   private audioSources: AudioBufferSourceNode[] = [];
   private _volume = 0.5;
@@ -394,6 +395,7 @@ class AudioManager {
   private lastAudioCtxCurrentTime = 0; // Necessary because audioCtx.currentTime doesn't reset to 0 on seek
   private audioLengthMs: number = 0;
   private endEventTimeout: ReturnType<typeof setTimeout> | null = null;
+  private _isPaused = true; // Track paused state independently since we share the AudioContext
 
   private constructor(
     private audioFiles: Uint8Array[],
@@ -423,7 +425,7 @@ class AudioManager {
       startDelayMs,
       fallbackAudioLengthMs
     );
-    await audioManager.initAudio();
+    await audioManager.decodeAudioFiles();
     return audioManager;
   }
 
@@ -453,20 +455,17 @@ class AudioManager {
 
   /** Nonnegative number of milliseconds representing time elapsed since the chart preview start. */
   get chartCurrentTimeMs() {
-    const isPaused = this.audioCtx.state === "suspended";
+    // Use our own paused state since we share the AudioContext with other instances
+    // and can't rely on audioCtx.state to determine this instance's state
+    if (this._isPaused) {
+      return this.lastSeekChartTimeMs;
+    }
     // outputLatency is not implemented in safari
     const audioLatency =
       (this.audioCtx.baseLatency + (this.audioCtx.outputLatency || 0)) * 1000;
     const audioTimeSinceLastSeekMs =
       (this.audioCtx.currentTime - this.lastAudioCtxCurrentTime) * 1000;
-    // Note: when paused, the queued audio during the latency period is skipped and never heard.
-    // The solution here is to represent that visually by jumping ahead slightly by ignoring latency when paused.
-    // If this is a more significant problem, it can be fixed by seeking backward by `audioLatency`.
-    return (
-      this.lastSeekChartTimeMs +
-      audioTimeSinceLastSeekMs -
-      (isPaused ? 0 : audioLatency)
-    );
+    return this.lastSeekChartTimeMs + audioTimeSinceLastSeekMs - audioLatency;
   }
 
   /** Nonnegative number of milliseconds representing when the audio ends (and when the chart preview ends). */
@@ -484,16 +483,17 @@ class AudioManager {
   }
 
   async play() {
-    // Reinitialize audio if needed (e.g., after seeking)
-    if (this.gainNode === null) {
-      await this.initAudio();
-    }
-    // Resume context if suspended
+    // Resume the shared context if suspended (needed for initial user interaction)
     if (this.audioCtx.state === "suspended") {
       await this.audioCtx.resume();
     }
-    // Restart end event timeout for charts without audio
-    if (this.audioSources.length === 0 && !this.endEventTimeout) {
+
+    // Start audio playback
+    this.startAudioSources();
+    this._isPaused = false;
+
+    // Start end event timeout for charts without audio
+    if (this.audioBuffers.length === 0 && !this.endEventTimeout) {
       const remainingMs = this.chartEndTimeMs - this.chartCurrentTimeMs;
       if (remainingMs > 0) {
         this.endEventTimeout = setTimeout(() => {
@@ -502,28 +502,64 @@ class AudioManager {
       }
     }
   }
+
   async pause() {
-    if (this.audioCtx.state === "running") {
-      await this.audioCtx.suspend();
-    }
+    // Record current playback position before stopping
+    const currentTime = this.chartCurrentTimeMs;
+    this._isPaused = true;
+    this.lastSeekChartTimeMs = currentTime;
+    this.lastAudioCtxCurrentTime = this.audioCtx.currentTime;
+
     // Clear end event timeout when pausing
     if (this.endEventTimeout) {
       clearTimeout(this.endEventTimeout);
       this.endEventTimeout = null;
     }
+
+    // Stop all audio sources for this instance only
+    // (Don't suspend the shared AudioContext - other instances may be playing)
+    this.stopAudioSources();
   }
 
   closeAudio() {
     this.eventEmitter.removeAllListeners();
+    this._isPaused = true;
     // Clear end event timeout
     if (this.endEventTimeout) {
       clearTimeout(this.endEventTimeout);
       this.endEventTimeout = null;
     }
     // Stop all audio sources
+    this.stopAudioSources();
+    // Don't close the shared context - just unregister this instance
+    unregisterInstance();
+  }
+
+  /**
+   * Decodes audio files into AudioBuffers. Called once during initialization.
+   */
+  private async decodeAudioFiles() {
+    this.audioBuffers = await Promise.all(
+      this.audioFiles.map((file) =>
+        this.audioCtx.decodeAudioData(file.slice(0).buffer)
+      )
+    );
+
+    // Use fallback if no audio files or if calculated duration is invalid
+    const calculatedLengthMs =
+      this.audioBuffers.length > 0
+        ? Math.max(...this.audioBuffers.map((b) => b.duration)) * 1000
+        : 0;
+    this.audioLengthMs =
+      calculatedLengthMs > 0 ? calculatedLengthMs : this.fallbackAudioLengthMs;
+  }
+
+  /**
+   * Stops all currently playing audio sources for this instance.
+   */
+  private stopAudioSources() {
     for (const source of this.audioSources) {
-      // Remove onended handler before stopping to prevent false "end" events
-      source.onended = null;
+      source.onended = null; // Prevent false "end" events
       try {
         source.stop();
         source.disconnect();
@@ -534,38 +570,14 @@ class AudioManager {
     this.audioSources = [];
     this.gainNode?.disconnect();
     this.gainNode = null;
-    // Don't close the shared context - just unregister this instance
-    unregisterInstance();
   }
 
-  async initAudio() {
+  /**
+   * Creates and starts audio sources from the current playback position.
+   */
+  private startAudioSources() {
     // Stop any existing sources before creating new ones
-    for (const source of this.audioSources) {
-      // Remove onended handler before stopping to prevent false "end" events
-      source.onended = null;
-      try {
-        source.stop();
-        source.disconnect();
-      } catch {
-        // Source may already be stopped
-      }
-    }
-    this.audioSources = [];
-
-    const audioBuffers = await Promise.all(
-      // Must be recreated on each seek because seek is not supported by the Web Audio API
-      this.audioFiles.map((file) =>
-        this.audioCtx.decodeAudioData(file.slice(0).buffer)
-      )
-    );
-
-    // Use fallback if no audio files or if calculated duration is invalid
-    const calculatedLengthMs =
-      audioBuffers.length > 0
-        ? Math.max(...audioBuffers.map((b) => b.duration)) * 1000
-        : 0;
-    this.audioLengthMs =
-      calculatedLengthMs > 0 ? calculatedLengthMs : this.fallbackAudioLengthMs;
+    this.stopAudioSources();
 
     this.gainNode = this.audioCtx.createGain();
     this.gainNode.gain.value = this._volume;
@@ -575,8 +587,8 @@ class AudioManager {
     const audioStartOffsetSeconds =
       (this.lastSeekChartTimeMs - this.startDelayMs) / 1000;
 
-    // If no audio files, use a timeout to emit "end" event like SilentAudioManager does
-    if (audioBuffers.length === 0) {
+    // If no audio files, use a timeout to emit "end" event
+    if (this.audioBuffers.length === 0) {
       // Clear any existing timeout
       if (this.endEventTimeout) {
         clearTimeout(this.endEventTimeout);
@@ -591,12 +603,12 @@ class AudioManager {
       }
     }
 
-    for (const audioBuffer of audioBuffers) {
+    for (const audioBuffer of this.audioBuffers) {
       const source = this.audioCtx.createBufferSource();
       source.buffer = audioBuffer;
       source.onended = () => {
         endedCount++;
-        if (endedCount === audioBuffers.length) {
+        if (endedCount === this.audioBuffers.length && !this._isPaused) {
           this.eventEmitter.emit("end");
         }
       };
@@ -614,19 +626,12 @@ class AudioManager {
       this.audioSources.push(source);
     }
     this.lastAudioCtxCurrentTime = this.audioCtx.currentTime;
-    this.pause();
   }
 
   /**
    * @param percentComplete The progress between the start and end of the preview.
    */
   async seek(percentComplete: number) {
-    // Suspend context first to prevent time drift during seek
-    // (chartCurrentTimeMs is calculated from audioCtx.currentTime)
-    if (this.audioCtx.state === "running") {
-      await this.audioCtx.suspend();
-    }
-
     // Clear end event timeout when seeking
     if (this.endEventTimeout) {
       clearTimeout(this.endEventTimeout);
@@ -634,22 +639,12 @@ class AudioManager {
     }
 
     // Stop existing audio sources
-    for (const source of this.audioSources) {
-      // Remove onended handler before stopping to prevent false "end" events
-      source.onended = null;
-      try {
-        source.stop();
-        source.disconnect();
-      } catch {
-        // Source may already be stopped
-      }
-    }
-    this.audioSources = [];
-    this.gainNode?.disconnect();
-    this.gainNode = null;
+    this.stopAudioSources();
+
     const chartSeekTimeMs = percentComplete * this.chartEndTimeMs;
     this.lastSeekChartTimeMs = chartSeekTimeMs;
     this.lastAudioCtxCurrentTime = this.audioCtx.currentTime;
+    this._isPaused = true;
   }
 }
 
