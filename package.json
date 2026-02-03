@@ -1,6 +1,6 @@
 {
 	"name": "chart-preview",
-	"version": "1.0.2",
+	"version": "1.0.3",
 	"author": "Geo",
 	"license": "MIT",
 	"main": "dist/index.js",
