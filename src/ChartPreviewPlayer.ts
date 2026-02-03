@@ -375,7 +375,7 @@ export class ChartPreviewPlayer extends HTMLElement {
 				<div class="preview-viewport">
 				</div>
 				<div class="controls">
-					<button class="control-btn play-btn" aria-label="Play" disabled>
+					<button class="control-btn play-btn" aria-label="Play">
 						${ICONS.play}
 					</button>
 					<div class="volume-wrapper">
