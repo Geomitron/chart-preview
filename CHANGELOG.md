@@ -1,5 +1,11 @@
 # chart-preview
 
+## 1.1.0
+
+### Minor Changes
+
+- 885a2db: Add note animations (Chrome only)
+
 ## 1.0.3
 
 ### Patch Changes
