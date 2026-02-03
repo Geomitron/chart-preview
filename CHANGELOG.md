@@ -1,5 +1,11 @@
 # chart-preview
 
+## 1.0.3
+
+### Patch Changes
+
+- 467db29: Enable play button in ChartPreviewPlayer by removing the disabled attribute, allowing user interaction.
+
 ## 1.0.2
 
 ### Patch Changes
