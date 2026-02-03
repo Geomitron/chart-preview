@@ -1,5 +1,11 @@
 # chart-preview
 
+## 1.0.2
+
+### Patch Changes
+
+- 5319db5: Refactor AudioManager to improve audio playback control and state management. Introduce independent paused state tracking, enhance audio source management, and streamline audio decoding process. Update ChartPreviewPlayer styles for better UI responsiveness and remove idle message.
+
 ## 1.0.1
 
 ### Patch Changes
