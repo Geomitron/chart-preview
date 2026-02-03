@@ -357,12 +357,21 @@ export class ChartPreviewPlayer extends HTMLElement {
   connectedCallback() {
     this.setAttribute("tabindex", "0");
     document.addEventListener("fullscreenchange", this.handleFullscreenChange);
+    // Safari uses webkit prefix
+    document.addEventListener(
+      "webkitfullscreenchange",
+      this.handleFullscreenChange
+    );
   }
 
   disconnectedCallback() {
     this.dispose();
     document.removeEventListener(
       "fullscreenchange",
+      this.handleFullscreenChange
+    );
+    document.removeEventListener(
+      "webkitfullscreenchange",
       this.handleFullscreenChange
     );
     this.removeEventListener("keydown", this.handleKeydown);
@@ -467,8 +476,9 @@ export class ChartPreviewPlayer extends HTMLElement {
       }
     });
 
-    // Fullscreen button
-    this.fullscreenBtn.addEventListener("click", () => {
+    // Fullscreen button - stop propagation to prevent any parent handlers
+    this.fullscreenBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
       this.toggleFullscreen();
     });
 
@@ -525,14 +535,20 @@ export class ChartPreviewPlayer extends HTMLElement {
   };
 
   private handleFullscreenChange = () => {
-    this._isFullscreen = document.fullscreenElement === this.container;
+    // Check if we're in fullscreen mode (support both standard and webkit prefix)
+    const fullscreenElement =
+      document.fullscreenElement ||
+      (document as unknown as { webkitFullscreenElement?: Element })
+        .webkitFullscreenElement;
+    this._isFullscreen =
+      fullscreenElement !== null && fullscreenElement !== undefined;
     this.container.classList.toggle("fullscreen", this._isFullscreen);
     this.fullscreenBtn.innerHTML = this._isFullscreen
       ? ICONS.fullscreenExit
       : ICONS.fullscreen;
     this.fullscreenBtn.title = this._isFullscreen
       ? "Exit fullscreen"
-      : "Toggle fullscreen";
+      : "Enter fullscreen";
   };
 
   private onSeekStart() {
@@ -900,7 +916,8 @@ export class ChartPreviewPlayer extends HTMLElement {
         files,
         config.instrument,
         config.difficulty,
-        config.initialSeekPercent
+        config.initialSeekPercent,
+        { animationsEnabled: config.animationsEnabled }
       );
 
       // Load the chart
@@ -948,7 +965,8 @@ export class ChartPreviewPlayer extends HTMLElement {
         files,
         config.instrument,
         config.difficulty,
-        config.initialSeekPercent
+        config.initialSeekPercent,
+        { animationsEnabled: config.animationsEnabled }
       );
 
       // Load the chart
@@ -992,7 +1010,8 @@ export class ChartPreviewPlayer extends HTMLElement {
         config.files,
         config.instrument,
         config.difficulty,
-        config.initialSeekPercent
+        config.initialSeekPercent,
+        { animationsEnabled: config.animationsEnabled }
       );
 
       // Load the chart
@@ -1105,12 +1124,46 @@ export class ChartPreviewPlayer extends HTMLElement {
    * Toggle fullscreen mode
    */
   async toggleFullscreen(): Promise<void> {
-    if (!document.fullscreenEnabled) return;
+    // Check for fullscreen support (standard and webkit)
+    const doc = document as unknown as {
+      fullscreenEnabled?: boolean;
+      webkitFullscreenEnabled?: boolean;
+      fullscreenElement?: Element;
+      webkitFullscreenElement?: Element;
+      exitFullscreen?: () => Promise<void>;
+      webkitExitFullscreen?: () => void;
+    };
+    const container = this.container as unknown as {
+      requestFullscreen?: () => Promise<void>;
+      webkitRequestFullscreen?: () => void;
+    };
 
-    if (this._isFullscreen) {
-      await document.exitFullscreen();
-    } else {
-      await this.container.requestFullscreen();
+    const isFullscreenEnabled =
+      doc.fullscreenEnabled || doc.webkitFullscreenEnabled;
+    if (!isFullscreenEnabled) return;
+
+    const fullscreenElement =
+      doc.fullscreenElement || doc.webkitFullscreenElement;
+
+    try {
+      if (fullscreenElement) {
+        // Exit fullscreen
+        if (doc.exitFullscreen) {
+          await doc.exitFullscreen();
+        } else if (doc.webkitExitFullscreen) {
+          doc.webkitExitFullscreen();
+        }
+      } else {
+        // Enter fullscreen
+        if (container.requestFullscreen) {
+          await container.requestFullscreen();
+        } else if (container.webkitRequestFullscreen) {
+          container.webkitRequestFullscreen();
+        }
+      }
+    } catch (error) {
+      // Fullscreen request can fail due to user gesture requirements or other reasons
+      console.warn("Fullscreen toggle failed:", error);
     }
   }
 

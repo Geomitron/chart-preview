@@ -13,6 +13,7 @@ A 3D chart preview player for rhythm games like Clone Hero. Renders chart files 
 - **Web Component** that can be dropped into any project
 - **Multiple instance support** - run several players simultaneously
 - **Simple URL-based loading** - just provide a URL to a .sng file
+- **Animated note textures** - supports animated WebP textures
 
 ## Installation
 
@@ -102,6 +103,7 @@ import {
   ChartPreview,
   ChartPreviewPlayer,
   getInstrumentType,
+  areAnimationsSupported,
 } from "chart-preview";
 import { parseChartFile } from "scan-chart";
 
@@ -109,7 +111,9 @@ import { parseChartFile } from "scan-chart";
 const parsedChart = parseChartFile(chartData, "chart", modifiers);
 
 // 2. Load textures (cache and reuse for same instrument type)
-const textures = await ChartPreview.loadTextures(getInstrumentType("guitar"));
+const textures = await ChartPreview.loadTextures(getInstrumentType("guitar"), {
+  animationsEnabled: areAnimationsSupported(),
+});
 
 // 3. Load the chart
 await player.loadChart({
@@ -365,6 +369,10 @@ interface LoadFromUrlConfig {
   difficulty: Difficulty;
   /** Initial seek position (0-1). Defaults to 0 */
   initialSeekPercent?: number;
+  /** AbortSignal to cancel the fetch operation */
+  signal?: AbortSignal;
+  /** Whether to enable animated textures. Defaults to true */
+  animationsEnabled?: boolean;
 }
 ```
 
@@ -380,6 +388,8 @@ interface LoadFromSngFileConfig {
   difficulty: Difficulty;
   /** Initial seek position (0-1). Defaults to 0 */
   initialSeekPercent?: number;
+  /** Whether to enable animated textures. Defaults to true */
+  animationsEnabled?: boolean;
 }
 ```
 
@@ -395,6 +405,8 @@ interface LoadFromChartFilesConfig {
   difficulty: Difficulty;
   /** Initial seek position (0-1). Defaults to 0 */
   initialSeekPercent?: number;
+  /** Whether to enable animated textures. Defaults to true */
+  animationsEnabled?: boolean;
 }
 ```
 
@@ -444,10 +456,17 @@ interface ChartPreviewPlayerConfig {
 For advanced use cases, you can use the `ChartPreview` class directly:
 
 ```typescript
-import { ChartPreview, getInstrumentType } from "chart-preview";
+import {
+  ChartPreview,
+  getInstrumentType,
+  areAnimationsSupported,
+} from "chart-preview";
 
 // Load textures (cache for reuse)
-const textures = await ChartPreview.loadTextures(getInstrumentType("guitar"));
+// Optionally disable animations for better performance
+const textures = await ChartPreview.loadTextures(getInstrumentType("guitar"), {
+  animationsEnabled: areAnimationsSupported(), // or set to false to always use static textures
+});
 
 // Create preview
 const preview = await ChartPreview.create({
@@ -485,7 +504,14 @@ import {
   prepareChartData,
   findChartFile,
   findAudioFiles,
+  isVideoFile,
+  areAnimationsSupported,
 } from "chart-preview";
+
+// Check if animated textures are supported (ImageDecoder API)
+if (areAnimationsSupported()) {
+  console.log("Animated note textures will be used");
+}
 
 // Fetch and extract a .sng file
 const sngData = await fetchSngFile("https://example.com/chart.sng");
@@ -494,6 +520,9 @@ const files = await extractSngFile(sngData);
 // Find specific files
 const chartFile = findChartFile(files); // Returns .chart or .mid file
 const audioFiles = findAudioFiles(files); // Returns audio file data
+
+// Check if a file is a video (to exclude from processing)
+const nonVideoFiles = files.filter((f) => !isVideoFile(f.fileName));
 
 // Prepare all data for playback
 const preparedData = await prepareChartData(files, "guitar", "expert");
@@ -528,13 +557,14 @@ Requires support for:
 - Web Audio API
 - WebGL
 
+**Animated Textures:** Requires the ImageDecoder API (Chromium-based browsers only: Chrome, Edge, Opera). Use `areAnimationsSupported()` to check. Other browsers fall back to static textures.
+
 ## Dependencies
 
 - `three` - 3D rendering
 - `scan-chart` - Chart parsing
 - `parse-sng` - .sng file extraction
 - `eventemitter3` - Event handling
-- `lodash` - Utility functions
 
 ## License
 

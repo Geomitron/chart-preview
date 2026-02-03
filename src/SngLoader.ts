@@ -7,7 +7,11 @@ import {
   type Instrument,
   type ScannedChart,
 } from "scan-chart";
-import { ChartPreview, type ParsedChart } from "./ChartPreview";
+import {
+  ChartPreview,
+  type LoadTexturesOptions,
+  type ParsedChart,
+} from "./ChartPreview";
 
 /**
  * Audio file extensions supported by the chart preview.
@@ -33,6 +37,11 @@ export interface LoadFromUrlConfig {
   initialSeekPercent?: number;
   /** AbortSignal to cancel the fetch operation */
   signal?: AbortSignal;
+  /**
+   * Whether to enable animated textures. Defaults to true.
+   * Set to false for better performance or when animations aren't supported.
+   */
+  animationsEnabled?: boolean;
 }
 
 /**
@@ -47,6 +56,11 @@ export interface LoadFromSngFileConfig {
   difficulty: Difficulty;
   /** Initial seek position as a percentage (0-1). Defaults to 0. */
   initialSeekPercent?: number;
+  /**
+   * Whether to enable animated textures. Defaults to true.
+   * Set to false for better performance or when animations aren't supported.
+   */
+  animationsEnabled?: boolean;
 }
 
 /**
@@ -61,6 +75,11 @@ export interface LoadFromChartFilesConfig {
   difficulty: Difficulty;
   /** Initial seek position as a percentage (0-1). Defaults to 0. */
   initialSeekPercent?: number;
+  /**
+   * Whether to enable animated textures. Defaults to true.
+   * Set to false for better performance or when animations aren't supported.
+   */
+  animationsEnabled?: boolean;
 }
 
 /**
@@ -218,13 +237,15 @@ export function isVideoFile(fileName: string): boolean {
  * @param instrument - The instrument to display
  * @param difficulty - The difficulty level to display
  * @param initialSeekPercent - Initial seek position (0-1)
+ * @param textureOptions - Options for texture loading (e.g., animations enabled)
  * @returns Prepared chart data ready for the player
  */
 export async function prepareChartData(
   files: { fileName: string; data: Uint8Array }[],
   instrument: Instrument,
   difficulty: Difficulty,
-  initialSeekPercent = 0
+  initialSeekPercent = 0,
+  textureOptions: LoadTexturesOptions = {}
 ): Promise<PreparedChartData> {
   // Filter out video files
   const filteredFiles = files.filter((f) => !isVideoFile(f.fileName));
@@ -276,7 +297,10 @@ export async function prepareChartData(
 
   // Load textures for the instrument type
   const instrumentType = getInstrumentType(instrument);
-  const textures = await ChartPreview.loadTextures(instrumentType);
+  const textures = await ChartPreview.loadTextures(
+    instrumentType,
+    textureOptions
+  );
 
   // Calculate audio length from the last note or from metadata
   const lastNote = parsedChart.trackData

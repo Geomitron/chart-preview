@@ -1,8 +1,10 @@
 // Core classes
 export {
   ChartPreview,
+  areAnimationsSupported,
   type ChartPreviewConfig,
   type ChartPreviewEvents,
+  type LoadTexturesOptions,
   type ParsedChart,
 } from "./ChartPreview";
 

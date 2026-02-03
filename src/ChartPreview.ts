@@ -34,18 +34,28 @@ function isImageDecoderSupported(): boolean {
 }
 
 /**
+ * Check if animations are supported on this browser.
+ * Use this to conditionally enable/disable animation features.
+ */
+export function areAnimationsSupported(): boolean {
+  return isImageDecoderSupported();
+}
+
+/**
  * Manages an animated WebP texture using the ImageDecoder API.
+ * Pre-decodes all frames during initialization for optimal performance.
  * Falls back to a static texture if ImageDecoder is not supported.
  */
 class AnimatedTexture {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   public texture: THREE.CanvasTexture;
-  private decoder: ImageDecoder | null = null;
   private frameIndex = 0;
   private frameCount = 0;
   private lastFrameTime = 0;
   private frameDurations: number[] = [];
+  /** Pre-decoded frames stored as ImageBitmap for fast synchronous access */
+  private frameCache: ImageBitmap[] = [];
   private isAnimated = false;
   private disposed = false;
 
@@ -61,12 +71,12 @@ class AnimatedTexture {
   /**
    * Creates an AnimatedTexture from a URL.
    * Uses ImageDecoder for animation if available, otherwise loads as static texture.
+   * Pre-decodes all frames during initialization for optimal render performance.
    */
   static async create(url: string): Promise<AnimatedTexture | THREE.Texture> {
     if (!isImageDecoderSupported()) {
       // Fall back to static texture loading
-      const textureLoader = new THREE.TextureLoader();
-      return textureLoader.loadAsync(url);
+      return loadStaticTexture(url);
     }
 
     try {
@@ -80,8 +90,7 @@ class AnimatedTexture {
       const isSupported = await ImageDecoder.isTypeSupported(contentType);
       if (!isSupported) {
         // Fall back to static texture
-        const textureLoader = new THREE.TextureLoader();
-        return textureLoader.loadAsync(url);
+        return loadStaticTexture(url);
       }
 
       const decoder = new ImageDecoder({
@@ -113,36 +122,55 @@ class AnimatedTexture {
         return animTexture.texture;
       }
 
-      // Animated image - decode first frame and set up animation
+      // Animated image - pre-decode ALL frames for optimal performance
       const firstResult = await decoder.decode({ frameIndex: 0 });
       const firstFrame = firstResult.image;
       const animTexture = new AnimatedTexture(
         firstFrame.displayWidth,
         firstFrame.displayHeight
       );
-      animTexture.ctx.drawImage(firstFrame, 0, 0);
-      animTexture.texture.needsUpdate = true;
 
-      animTexture.decoder = decoder;
-      animTexture.frameCount = frameCount;
-      animTexture.isAnimated = true;
-
-      // Pre-decode frame durations
+      // Pre-decode all frames into ImageBitmap cache
       animTexture.frameDurations = [];
+      animTexture.frameCache = [];
+
       for (let i = 0; i < frameCount; i++) {
         try {
           const frameResult = await decoder.decode({ frameIndex: i });
+          const videoFrame = frameResult.image;
+
+          // Create an ImageBitmap from the VideoFrame for fast synchronous access
+          const bitmap = await createImageBitmap(videoFrame);
+          animTexture.frameCache.push(bitmap);
+
           // Duration is in microseconds, convert to milliseconds
-          const durationMs = (frameResult.image.duration ?? 100000) / 1000;
+          const durationMs = (videoFrame.duration ?? 100000) / 1000;
           animTexture.frameDurations.push(durationMs);
-          frameResult.image.close();
+          videoFrame.close();
         } catch {
           animTexture.frameDurations.push(100); // Default 100ms
+          // If frame decode fails, reuse the last successful frame or create empty bitmap
+          if (animTexture.frameCache.length > 0) {
+            animTexture.frameCache.push(
+              animTexture.frameCache[animTexture.frameCache.length - 1]
+            );
+          }
         }
       }
 
-      firstFrame.close();
+      // Draw the first frame
+      if (animTexture.frameCache.length > 0) {
+        animTexture.ctx.drawImage(animTexture.frameCache[0], 0, 0);
+        animTexture.texture.needsUpdate = true;
+      }
+
+      animTexture.frameCount = animTexture.frameCache.length;
+      animTexture.isAnimated = animTexture.frameCount > 1;
       animTexture.lastFrameTime = performance.now();
+
+      // Close the decoder - we no longer need it since all frames are cached
+      firstFrame.close();
+      decoder.close();
 
       return animTexture;
     } catch (error) {
@@ -151,17 +179,17 @@ class AnimatedTexture {
         "Failed to load animated texture, falling back to static:",
         error
       );
-      const textureLoader = new THREE.TextureLoader();
-      return textureLoader.loadAsync(url);
+      return loadStaticTexture(url);
     }
   }
 
   /**
    * Updates the texture to the current animation frame based on elapsed time.
-   * Call this each frame in the render loop.
+   * This method is SYNCHRONOUS for optimal render performance - all frames
+   * are pre-decoded during initialization.
    */
-  async tick(): Promise<void> {
-    if (!this.isAnimated || !this.decoder || this.disposed) {
+  tick(): void {
+    if (!this.isAnimated || this.disposed || this.frameCache.length === 0) {
       return;
     }
 
@@ -173,16 +201,12 @@ class AnimatedTexture {
       this.frameIndex = (this.frameIndex + 1) % this.frameCount;
       this.lastFrameTime = now;
 
-      try {
-        const result = await this.decoder.decode({
-          frameIndex: this.frameIndex,
-        });
+      // Synchronous frame update from pre-decoded cache
+      const frame = this.frameCache[this.frameIndex];
+      if (frame) {
         this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-        this.ctx.drawImage(result.image, 0, 0);
+        this.ctx.drawImage(frame, 0, 0);
         this.texture.needsUpdate = true;
-        result.image.close();
-      } catch {
-        // Frame decode failed, skip this frame
       }
     }
   }
@@ -192,12 +216,47 @@ class AnimatedTexture {
    */
   dispose(): void {
     this.disposed = true;
-    if (this.decoder) {
-      this.decoder.close();
-      this.decoder = null;
+    // Close all cached ImageBitmaps
+    for (const bitmap of this.frameCache) {
+      bitmap.close();
     }
+    this.frameCache = [];
     this.texture.dispose();
   }
+}
+
+/**
+ * Loads a static texture from a URL with proper error handling.
+ * Creates a fallback placeholder texture if loading fails.
+ */
+async function loadStaticTexture(url: string): Promise<THREE.Texture> {
+  const textureLoader = new THREE.TextureLoader();
+  try {
+    const texture = await textureLoader.loadAsync(url);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    return texture;
+  } catch (error) {
+    console.warn(`Failed to load static texture from ${url}:`, error);
+    // Create a small placeholder texture so notes still render
+    return createPlaceholderTexture();
+  }
+}
+
+/**
+ * Creates a placeholder texture (magenta square) for missing textures.
+ * This ensures notes always render even if texture loading fails.
+ */
+function createPlaceholderTexture(): THREE.Texture {
+  const canvas = document.createElement("canvas");
+  canvas.width = 32;
+  canvas.height = 32;
+  const ctx = canvas.getContext("2d")!;
+  // Draw a magenta square to make missing textures obvious
+  ctx.fillStyle = "#FF00FF";
+  ctx.fillRect(0, 0, 32, 32);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
 }
 
 /** Collection of animated textures that need to be ticked each frame */
@@ -210,8 +269,13 @@ class AnimatedTextureManager {
     }
   }
 
-  async tick(): Promise<void> {
-    await Promise.all(this.animatedTextures.map((t) => t.tick()));
+  /**
+   * Updates all animated textures. This is now SYNCHRONOUS for optimal performance.
+   */
+  tick(): void {
+    for (const texture of this.animatedTextures) {
+      texture.tick();
+    }
   }
 
   dispose(): void {
@@ -1062,6 +1126,17 @@ class NotesManager {
       i++
     ) {
       const note = this.noteEvents[i];
+
+      // Get the material for this note type and flags
+      const material = this.noteMaterials.get(note.type)?.get(note.flags);
+      if (!material) {
+        // Skip notes with missing textures (shouldn't happen, but prevents crashes)
+        console.warn(
+          `Missing texture for note type ${note.type} with flags ${note.flags}`
+        );
+        continue;
+      }
+
       const noteGroup = new THREE.Group();
       const scale =
         note.type === noteTypes.kick
@@ -1070,9 +1145,7 @@ class NotesManager {
             this.instrumentType === instrumentTypes.sixFret
           ? 0.04
           : SCALE;
-      const sprite = new THREE.Sprite(
-        this.noteMaterials.get(note.type)!.get(note.flags)!
-      );
+      const sprite = new THREE.Sprite(material);
       noteGroup.add(sprite);
       sprite.center = new THREE.Vector2(
         note.type === noteTypes.kick ? 0.62 : 0.5,
@@ -1177,12 +1250,27 @@ class EventSequence<
   }
 }
 
+export interface LoadTexturesOptions {
+  /**
+   * Whether to enable animated textures.
+   * When true (default), uses ImageDecoder API for animated WebP if available.
+   * When false, always loads static textures for better performance.
+   * Use `areAnimationsSupported()` to check if animations are supported on the current browser.
+   */
+  animationsEnabled?: boolean;
+}
+
 /**
  * Loads all required textures for the chart preview.
  * @param instrumentType The type of instrument to load textures for
+ * @param options Optional configuration for texture loading
  * @returns An object containing highway, strikeline, note textures, and animated texture manager
  */
-async function loadTextures(instrumentType: InstrumentType) {
+async function loadTextures(
+  instrumentType: InstrumentType,
+  options: LoadTexturesOptions = {}
+) {
+  const { animationsEnabled = true } = options;
   const textureLoader = new THREE.TextureLoader();
   const animatedTextureManager = new AnimatedTextureManager();
 
@@ -1192,9 +1280,16 @@ async function loadTextures(instrumentType: InstrumentType) {
   /**
    * Loads a texture with animation support.
    * Uses ImageDecoder API for animated WebP when available, falls back to static.
+   * If animationsEnabled is false, always loads static textures.
    */
   const loadAnimated = async (path: string): Promise<THREE.Texture> => {
     const url = `https://static.enchor.us/preview-${path}.webp`;
+
+    // If animations are disabled, load static texture directly
+    if (!animationsEnabled) {
+      return loadStaticTexture(url);
+    }
+
     const result = await AnimatedTexture.create(url);
 
     if (result instanceof AnimatedTexture) {
