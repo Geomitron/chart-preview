@@ -1,5 +1,11 @@
 # chart-preview
 
+## 1.3.0
+
+### Minor Changes
+
+- fe294b3: Add manual resize functionality to ChartPreview and trigger resize in ChartPreviewPlayer on fullscreen change
+
 ## 1.2.0
 
 ### Minor Changes
