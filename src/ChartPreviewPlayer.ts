@@ -549,6 +549,18 @@ export class ChartPreviewPlayer extends HTMLElement {
     this.fullscreenBtn.title = this._isFullscreen
       ? "Exit fullscreen"
       : "Enter fullscreen";
+
+    // Trigger resize on the chart preview after a short delay
+    // to ensure the container dimensions have updated
+    if (this.chartPreview) {
+      // Use requestAnimationFrame to ensure DOM has updated
+      requestAnimationFrame(() => {
+        // Double RAF to ensure layout has been recalculated
+        requestAnimationFrame(() => {
+          this.chartPreview?.resize();
+        });
+      });
+    }
   };
 
   private onSeekStart() {

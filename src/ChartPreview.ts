@@ -510,6 +510,19 @@ export class ChartPreview {
   }
 
   /**
+   * Manually triggers a resize of the camera and renderer.
+   * Call this when the container size changes (e.g., entering/exiting fullscreen).
+   */
+  resize() {
+    this.camera.triggerResize();
+    this.renderer.triggerResize();
+    // Re-render a frame to immediately show the updated size
+    if (this.paused) {
+      this.animateFrame(false);
+    }
+  }
+
+  /**
    * Cleans up all resources. Call this when discarding the preview.
    * The preview should not be used after calling dispose().
    */
@@ -618,6 +631,11 @@ class ChartCamera extends THREE.PerspectiveCamera {
     this.updateProjectionMatrix();
   }
 
+  /** Manually trigger a resize update */
+  triggerResize() {
+    this.onResize();
+  }
+
   dispose() {
     window.removeEventListener("resize", this.resizeListener);
     this.clear();
@@ -640,6 +658,11 @@ class ChartRenderer extends THREE.WebGLRenderer {
     const width = this.divContainer.offsetWidth ?? window.innerWidth;
     const height = this.divContainer.offsetHeight ?? window.innerHeight;
     this.setSize(width, height);
+  }
+
+  /** Manually trigger a resize update */
+  triggerResize() {
+    this.onResize();
   }
 
   override dispose() {
