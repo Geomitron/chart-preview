@@ -22,9 +22,14 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: "npm"
-          registry-url: "https://registry.npmjs.org"
+
+      # npm trusted publishing needs npm >= 11.5.1; a cached Node 24.x can bundle an older npm.
+      - name: Install npm for trusted publishing
+        run: |
+          npm install -g npm@^11.5.1
+          npm --version
 
       - name: Install Dependencies
         run: npm ci
@@ -35,4 +40,3 @@ jobs:
           publish: npm run release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
