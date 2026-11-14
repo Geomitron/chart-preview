@@ -90,41 +90,69 @@ export function getPreviewStartMs(
 
 /**
  * Returns the `delay` value of the chart's song.ini as written, or undefined
- * when there is no song.ini or it sets no `delay`.
+ * when there is no song.ini or it sets no `delay`. When the key repeats, the
+ * last value counts.
  */
 export function readSongIniDelay(
   files: { fileName: string; data: Uint8Array }[]
 ): string | undefined {
+  return readSongIniSection(files).get("delay");
+}
+
+/**
+ * Reads the `[song]` section of the chart's song.ini into a map of lowercase
+ * keys to trimmed values. Comment lines start with `#` or `;`, a section
+ * header is a whole line in brackets, and a repeated key keeps its last value.
+ */
+function readSongIniSection(
+  files: { fileName: string; data: Uint8Array }[]
+): Map<string, string> {
+  const values = new Map<string, string>();
   const songIni = files.find(
     (file) => file.fileName.split("/").pop()?.toLowerCase() === "song.ini"
   );
-  if (!songIni) return undefined;
+  if (!songIni) return values;
 
-  let inSongSection = false;
-  for (const rawLine of new TextDecoder().decode(songIni.data).split(/\r?\n/)) {
+  let section = "";
+  for (const rawLine of new TextDecoder().decode(songIni.data).split("\n")) {
     const line = rawLine.trim();
-    if (line.startsWith("[")) {
-      inSongSection = line.toLowerCase() === "[song]";
-    } else if (inSongSection) {
-      const separator = line.indexOf("=");
-      if (
-        separator !== -1 &&
-        line.slice(0, separator).trim().toLowerCase() === "delay"
-      ) {
-        return line.slice(separator + 1).trim();
-      }
+    if (line === "" || line.startsWith("#") || line.startsWith(";")) continue;
+    if (line.startsWith("[") && line.endsWith("]")) {
+      section = line.slice(1, -1).toLowerCase();
+      continue;
     }
+    const separator = line.indexOf("=");
+    if (separator === -1 || section !== "song") continue;
+    values.set(
+      line.slice(0, separator).trim().toLowerCase(),
+      line.slice(separator + 1).trim()
+    );
   }
-  return undefined;
+  return values;
 }
 
-/** Reads a song.ini `delay`: whole milliseconds, or seconds with a decimal point. */
+const INT32_MIN = -(2 ** 31);
+const INT32_MAX = 2 ** 31 - 1;
+const DECIMAL_NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
+
+/** Parses a whole number in the 32-bit integer range, or returns undefined. */
+function parseInt32(text: string) {
+  if (!/^[+-]?\d+$/.test(text)) return undefined;
+  const value = Number(text);
+  return value >= INT32_MIN && value <= INT32_MAX ? value : undefined;
+}
+
+/**
+ * Reads a song.ini `delay`: whole milliseconds, or seconds with a decimal
+ * point. Anything else, or a result outside the 32-bit integer range, is 0.
+ */
 function songIniDelayToMs(text: string) {
   if (text.includes(".")) {
-    const seconds = Number(text);
-    return Number.isFinite(seconds) ? truncatedSecondsToMs(seconds) : 0;
+    if (!DECIMAL_NUMBER.test(text)) return 0;
+    const ms = truncatedSecondsToMs(Number(text));
+    return ms >= INT32_MIN && ms <= INT32_MAX ? ms : 0;
   }
-  return /^[+-]?\d+$/.test(text) ? Number(text) : 0;
+  return parseInt32(text) ?? 0;
 }
 
 // Clone Hero converts seconds to milliseconds in single precision, so a value
