@@ -51,6 +51,17 @@ describe("prepareChartData timing", () => {
     expect(prepared.startDelayMs).toBe(-330);
   });
 
+  it("returns the song.ini preview start and the caller's seek percent", async () => {
+    const prepared = await prepareChartData(
+      chartFolder(["preview_start_time = 30000"]),
+      "guitar",
+      "expert",
+      0.25
+    );
+    expect(prepared.previewStartAudioMs).toBe(30_000);
+    expect(prepared.initialSeekPercent).toBe(0.25);
+  });
+
   it("uses the .chart Offset when song.ini sets no delay", async () => {
     const prepared = await prepareChartData(chartFolder([]), "guitar", "expert");
     expect(prepared.startDelayMs).toBe(-500);

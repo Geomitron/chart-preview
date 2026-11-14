@@ -670,20 +670,20 @@ export class ChartPreview {
 
     this.renderer.render(this.scene, this.camera);
 
-    // Throttle progress events to reduce overhead
     if (emit) {
-      const now = performance.now();
-      if (now - this.lastProgressEmitTime >= this.progressIntervalMs) {
-        this.lastProgressEmitTime = now;
-        this.eventEmitter.emit(
-          "progress",
-          timelineProgress(
-            this.audioManager,
-            this.audioManager.chartCurrentTimeMs
-          )
-        );
-      }
+      this.emitProgress();
     }
+  }
+
+  /** Emits the timeline progress, at most once per progress interval. */
+  private emitProgress() {
+    const now = performance.now();
+    if (now - this.lastProgressEmitTime < this.progressIntervalMs) return;
+    this.lastProgressEmitTime = now;
+    this.eventEmitter.emit(
+      "progress",
+      timelineProgress(this.audioManager, this.audioManager.chartCurrentTimeMs)
+    );
   }
 }
 
