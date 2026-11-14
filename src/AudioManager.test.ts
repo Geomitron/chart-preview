@@ -50,7 +50,7 @@ vi.mock("./SharedAudioContext", () => ({
   isAudioContextSupported: () => true,
 }));
 
-const { AudioManager, SilentAudioManager } = await import("./ChartPreview");
+const { AudioManager, ChartPreview, SilentAudioManager } = await import("./ChartPreview");
 
 const AUDIO_SECONDS = 200;
 const AUDIO_MS = AUDIO_SECONDS * 1000;
@@ -141,6 +141,21 @@ describe("AudioManager timeline", () => {
     const manager = await AudioManager.create([new Uint8Array(4)], 0, 15_000);
     expect(manager.audioLengthMs).toBe(AUDIO_MS);
     expect(manager.chartEndTimeMs).toBe(AUDIO_MS);
+  });
+});
+
+describe("ChartPreview progress", () => {
+  it("reports how far playback is through the whole timeline", () => {
+    const emitted: unknown[][] = [];
+    const preview = {
+      audioManager: { chartStartTimeMs: -4310, chartEndTimeMs: 195_690, chartCurrentTimeMs: 95_690 },
+      lastProgressEmitTime: -Infinity,
+      progressIntervalMs: 0,
+      eventEmitter: { emit: (...args: unknown[]) => emitted.push(args) },
+    };
+    const emitProgress = Reflect.get(ChartPreview.prototype, "emitProgress") as () => void;
+    emitProgress.call(preview);
+    expect(emitted).toEqual([["progress", 0.5]]);
   });
 });
 
