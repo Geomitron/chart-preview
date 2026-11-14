@@ -106,11 +106,11 @@ import {
   getInstrumentType,
   areAnimationsSupported,
 } from "chart-preview";
-import { parseChartFile, scanChartFolder } from "scan-chart";
+import { parseChartFile } from "scan-chart";
 
 // 1. Parse your chart file, and place its audio on the chart's timeline
+// (files: the chart's files, as { fileName, data } objects)
 const parsedChart = parseChartFile(chartData, "chart", modifiers);
-const scannedChart = scanChartFolder(files);
 const { startDelayMs, previewStartAudioMs } = getChartTiming(files);
 
 // 2. Load textures (cache and reuse for same instrument type)
@@ -135,13 +135,13 @@ await player.loadChart({
 
 The preview places a chart's audio and preview start the way Clone Hero does:
 
-- **song.ini `delay`** is how far into the audio, in milliseconds, chart time 0 is. A positive `delay` means the audio is already playing when the chart starts; a negative `delay` means the audio starts after the chart does. A value written with a decimal point, such as `0.33`, is in seconds.
-- **.chart `Offset`** is the same setting in seconds. It applies only when song.ini sets no `delay` or a `delay` of 0; the two are never added.
-- **song.ini `preview_start_time`** is how far into the audio, in milliseconds, the preview starts. When it is missing or -1, the preview starts 20 seconds into the audio. Audio shorter than 20 seconds always previews from its start.
+- **song.ini `delay`** is how far into the audio, in milliseconds, chart time 0 is. A positive `delay` means the audio is already playing when the chart starts; a negative `delay` means the audio starts after the chart does. A value written with a decimal point, such as `0.33`, is in seconds. When `delay` appears more than once, the last one counts. A value that can't be read, or that is outside the 32-bit integer range, counts as 0.
+- **.chart `Offset`** is the same setting in seconds. It applies only when song.ini sets no `delay`, a `delay` of 0, or a `delay` that can't be read; the two are never added. A .mid chart ignores it.
+- **song.ini `preview_start_time`** is how far into the audio, in milliseconds, the preview starts. When it is missing, -1, or not a whole number, the .chart `PreviewStart` (in seconds) is used instead, and a `PreviewStart` of 0 starts the preview at the beginning of the audio. When neither is set, the preview starts 20 seconds into the audio. Audio shorter than 20 seconds always previews from its start.
 
 The preview's timeline starts where the audio starts, so the seek bar covers all of the audio. When the audio starts after the chart does, the timeline starts at chart time 0 and the first notes play before the audio begins.
 
-The loaders apply these rules for you. When you pass pre-processed data, compute `startDelayMs` and `previewStartAudioMs` with `getChartTiming()`, as in Option 4. The player applies the 20-second rule to the decoded audio's length.
+The loaders apply these rules for you. When you pass pre-processed data, compute `startDelayMs` and `previewStartAudioMs` by passing the chart's files to `getChartTiming()`, as in Option 4. The player applies the 20-second rule to the length of the decoded audio.
 
 ## Framework Integration
 
@@ -550,7 +550,7 @@ const nonVideoFiles = files.filter((f) => !isVideoFile(f.fileName));
 // Prepare all data for playback
 const preparedData = await prepareChartData(files, "guitar", "expert");
 
-// Place a scanned chart's audio and preview start on its timeline
+// Place the chart's audio and preview start on its timeline
 const { startDelayMs, previewStartAudioMs } = getChartTiming(files);
 ```
 
