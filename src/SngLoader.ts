@@ -106,8 +106,11 @@ export interface PreparedChartData {
   audioLengthMs: number;
   /** The caller's initial seek position (0-1), or 0 if it gave none */
   initialSeekPercent: number;
-  /** Chart time, in milliseconds, of the chart's preview start */
-  previewStartMs: number;
+  /**
+   * Audio position, in milliseconds, of the chart's preview start, for audio
+   * at least 20 seconds long
+   */
+  previewStartAudioMs: number;
 }
 
 /**
@@ -322,10 +325,10 @@ export async function prepareChartData(
     .reduce((max, note) => Math.max(max, note.msTime + note.msLength), 0);
   const audioLengthMs = scannedChart.song_length || lastNote + 5000;
 
-  const { startDelayMs, previewStartMs } = getChartTiming(
-    { ...scannedChart, songIniDelay: readSongIniDelay(filteredFiles) },
-    audioLengthMs
-  );
+  const { startDelayMs, previewStartAudioMs } = getChartTiming({
+    ...scannedChart,
+    songIniDelay: readSongIniDelay(filteredFiles),
+  });
 
   return {
     parsedChart,
@@ -336,7 +339,7 @@ export async function prepareChartData(
     startDelayMs,
     audioLengthMs,
     initialSeekPercent,
-    previewStartMs,
+    previewStartAudioMs,
   };
 }
 

@@ -32,6 +32,7 @@ export {
 // Timing of a chart's audio and preview start
 export {
   getChartTiming,
+  getPreviewStartMs,
   readSongIniDelay,
   type ChartTiming,
   type ChartTimingMetadata,

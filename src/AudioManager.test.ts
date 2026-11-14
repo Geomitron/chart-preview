@@ -135,6 +135,13 @@ describe("AudioManager timeline", () => {
     await manager.seek(1);
     expect(manager.chartCurrentTimeMs).toBe(AUDIO_MS - 4310);
   });
+
+  it("reports the decoded audio length, not the metadata estimate", async () => {
+    // No song_length and a last note at 10 s give a 15 s estimate.
+    const manager = await AudioManager.create([new Uint8Array(4)], 0, 15_000);
+    expect(manager.audioLengthMs).toBe(AUDIO_MS);
+    expect(manager.chartEndTimeMs).toBe(AUDIO_MS);
+  });
 });
 
 describe("SilentAudioManager timeline", () => {

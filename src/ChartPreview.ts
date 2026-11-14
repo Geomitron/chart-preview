@@ -576,6 +576,11 @@ export class ChartPreview {
     return this.audioManager.chartEndTimeMs;
   }
 
+  /** The length of the longest decoded audio stem, in milliseconds. */
+  get audioLengthMs() {
+    return this.audioManager.audioLengthMs;
+  }
+
   /**
    * Manually triggers a resize of the camera and renderer.
    * Call this when the container size changes (e.g., entering/exiting fullscreen).
@@ -753,7 +758,7 @@ export class AudioManager {
   private _volume = 0.5;
   private lastSeekChartTimeMs = 0;
   private lastAudioCtxCurrentTime = 0; // Necessary because audioCtx.currentTime doesn't reset to 0 on seek
-  private audioLengthMs: number = 0;
+  private decodedAudioLengthMs = 0;
   private endEventTimeout: ReturnType<typeof setTimeout> | null = null;
   private _isPaused = true; // Track paused state independently since we share the AudioContext
 
@@ -829,6 +834,11 @@ export class AudioManager {
     return this.lastSeekChartTimeMs + audioTimeSinceLastSeekMs - audioLatency;
   }
 
+  /** The length of the longest decoded stem, or the fallback length without audio. */
+  get audioLengthMs() {
+    return this.decodedAudioLengthMs;
+  }
+
   /** Chart time where the preview starts: the audio's start, or 0 if the audio starts later. */
   get chartStartTimeMs() {
     return Math.min(this.startDelayMs, 0);
@@ -838,7 +848,7 @@ export class AudioManager {
   get chartEndTimeMs() {
     return (
       this.startDelayMs +
-      Math.max(this.audioLengthMs, this.fallbackAudioLengthMs)
+      Math.max(this.decodedAudioLengthMs, this.fallbackAudioLengthMs)
     );
   }
 
@@ -910,7 +920,7 @@ export class AudioManager {
       this.audioBuffers.length > 0
         ? Math.max(...this.audioBuffers.map((b) => b.duration)) * 1000
         : 0;
-    this.audioLengthMs =
+    this.decodedAudioLengthMs =
       calculatedLengthMs > 0 ? calculatedLengthMs : this.fallbackAudioLengthMs;
   }
 
@@ -1018,7 +1028,7 @@ export class SilentAudioManager {
 
   private constructor(
     private startDelayMs: number,
-    private audioLengthMs: number
+    readonly audioLengthMs: number
   ) {}
 
   /**

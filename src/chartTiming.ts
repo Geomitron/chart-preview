@@ -18,12 +18,18 @@ export interface ChartTiming {
    * Negative when the audio is already playing at chart time 0.
    */
   startDelayMs: number;
-  /** Chart time, in milliseconds, where playback starts by default. */
-  previewStartMs: number;
+  /**
+   * Audio position, in milliseconds, where playback starts by default when
+   * the audio is at least 20 seconds long. Pass it to `getPreviewStartMs()`
+   * with the decoded audio length.
+   */
+  previewStartAudioMs: number;
 }
 
 /** Audio position used when a chart sets no preview start. */
 const DEFAULT_PREVIEW_START_MS = 20_000;
+/** Audio shorter than this always previews from its start. */
+const MIN_AUDIO_FOR_PREVIEW_START_MS = 20_000;
 
 /**
  * Computes where a chart's audio and default preview start sit on its
@@ -35,17 +41,12 @@ const DEFAULT_PREVIEW_START_MS = 20_000;
  * - The .chart `Offset` is in seconds, rounded up to whole milliseconds. It
  *   applies only when `delay` is unset or 0; the two are never added.
  * - `preview_start_time` is an audio position in milliseconds. When it is
- *   unset or -1, the preview starts 20 seconds into the audio. Audio shorter
- *   than 20 seconds always previews from its start.
+ *   unset or -1, the preview starts 20 seconds into the audio.
  *
  * @param metadata The chart's metadata from scan-chart's `scanChartFolder`,
  * with `songIniDelay` from `readSongIniDelay()`.
- * @param audioLengthMs The length of the chart's audio in milliseconds.
  */
-export function getChartTiming(
-  metadata: ChartTimingMetadata,
-  audioLengthMs: number
-): ChartTiming {
+export function getChartTiming(metadata: ChartTimingMetadata): ChartTiming {
   const chartOffsetMs = metadata.chart_offset ?? 0;
   const delay = metadata.delay ?? 0;
   // Without a song.ini, scan-chart copies the .chart Offset into `delay`.
@@ -60,20 +61,31 @@ export function getChartTiming(
   const startDelayMs = 0 - audioOffsetMs;
 
   const previewStart = metadata.preview_start_time ?? -1;
-  let previewStartAudioMs =
+  const previewStartAudioMs =
     previewStart === -1
       ? DEFAULT_PREVIEW_START_MS
       : Number.isInteger(previewStart)
       ? previewStart
       : roundedUpSecondsToMs(previewStart / 1000);
-  if (audioLengthMs < DEFAULT_PREVIEW_START_MS) {
-    previewStartAudioMs = 0;
-  }
 
-  return {
-    startDelayMs,
-    previewStartMs: startDelayMs + previewStartAudioMs,
-  };
+  return { startDelayMs, previewStartAudioMs };
+}
+
+/**
+ * Returns the chart time, in milliseconds, where playback starts by default.
+ * Audio shorter than 20 seconds always previews from its start.
+ *
+ * @param audioLengthMs The length of the decoded audio in milliseconds.
+ */
+export function getPreviewStartMs(
+  timing: ChartTiming,
+  audioLengthMs: number
+): number {
+  const audioMs =
+    audioLengthMs < MIN_AUDIO_FOR_PREVIEW_START_MS
+      ? 0
+      : timing.previewStartAudioMs;
+  return timing.startDelayMs + audioMs;
 }
 
 /**
