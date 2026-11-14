@@ -18,6 +18,7 @@ import {
   unregisterInstance,
   isAudioContextSupported,
 } from "./SharedAudioContext";
+import { timelineChartTimeMs, timelineProgress } from "./timeline";
 
 export type ParsedChart = ReturnType<typeof parseChartFile>;
 
@@ -669,11 +670,12 @@ export class ChartPreview {
       const now = performance.now();
       if (now - this.lastProgressEmitTime >= this.progressIntervalMs) {
         this.lastProgressEmitTime = now;
-        const { chartStartTimeMs, chartEndTimeMs } = this.audioManager;
         this.eventEmitter.emit(
           "progress",
-          (this.audioManager.chartCurrentTimeMs - chartStartTimeMs) /
-            (chartEndTimeMs - chartStartTimeMs)
+          timelineProgress(
+            this.audioManager,
+            this.audioManager.chartCurrentTimeMs
+          )
         );
       }
     }
@@ -999,9 +1001,7 @@ export class AudioManager {
     // Stop existing audio sources
     this.stopAudioSources();
 
-    this.lastSeekChartTimeMs =
-      this.chartStartTimeMs +
-      percentComplete * (this.chartEndTimeMs - this.chartStartTimeMs);
+    this.lastSeekChartTimeMs = timelineChartTimeMs(this, percentComplete);
     this.lastAudioCtxCurrentTime = this.audioCtx.currentTime;
     this._isPaused = true;
   }
@@ -1104,9 +1104,7 @@ export class SilentAudioManager {
    * @param percentComplete The progress between the start and end of the preview.
    */
   async seek(percentComplete: number) {
-    this.lastResumeChartTimeMs =
-      this.chartStartTimeMs +
-      percentComplete * (this.chartEndTimeMs - this.chartStartTimeMs);
+    this.lastResumeChartTimeMs = timelineChartTimeMs(this, percentComplete);
 
     if (!this.isPaused) {
       this.play();

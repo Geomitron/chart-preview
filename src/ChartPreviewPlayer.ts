@@ -11,6 +11,11 @@ import {
   type LoadFromSngFileConfig,
   type LoadFromChartFilesConfig,
 } from "./SngLoader";
+import {
+  getInitialSeekPercent,
+  timelineDurationMs,
+  timelineElapsedMs,
+} from "./timeline";
 
 export type PlayerState =
   | "idle"
@@ -784,8 +789,9 @@ export class ChartPreviewPlayer extends HTMLElement {
    */
   get currentTimeMs(): number {
     if (!this.chartPreview) return 0;
-    return (
-      this.chartPreview.chartCurrentTimeMs - this.chartPreview.chartStartTimeMs
+    return timelineElapsedMs(
+      this.chartPreview,
+      this.chartPreview.chartCurrentTimeMs
     );
   }
 
@@ -794,7 +800,7 @@ export class ChartPreviewPlayer extends HTMLElement {
    */
   get durationMs(): number {
     if (!this.chartPreview) return 0;
-    return this.chartPreview.chartEndTimeMs - this.chartPreview.chartStartTimeMs;
+    return timelineDurationMs(this.chartPreview);
   }
 
   /**
@@ -888,17 +894,13 @@ export class ChartPreviewPlayer extends HTMLElement {
       });
 
       // Seek to the initial position, if any
-      const initialSeekPercent =
-        config.initialSeekPercent !== undefined && config.initialSeekPercent > 0
-          ? config.initialSeekPercent
-          : config.previewStartMs !== undefined
-          ? (config.previewStartMs - this.chartPreview.chartStartTimeMs) /
-            this.durationMs
-          : 0;
-      const clampedSeekPercent = Math.max(0, Math.min(1, initialSeekPercent));
-      if (clampedSeekPercent > 0) {
-        await this.chartPreview.seek(clampedSeekPercent);
-        this.seekBar.value = String(Math.round(clampedSeekPercent * 1000));
+      const initialSeekPercent = getInitialSeekPercent(
+        this.chartPreview,
+        config
+      );
+      if (initialSeekPercent > 0) {
+        await this.chartPreview.seek(initialSeekPercent);
+        this.seekBar.value = String(Math.round(initialSeekPercent * 1000));
       }
 
       // Enable controls

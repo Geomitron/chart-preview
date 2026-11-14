@@ -150,4 +150,18 @@ describe("SilentAudioManager timeline", () => {
     await manager.seek(1);
     expect(manager.chartCurrentTimeMs).toBe(end);
   });
+
+  it("restarts from the timeline's start after reaching the end", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    try {
+      const manager = await SilentAudioManager.create(-4310, AUDIO_MS);
+      await manager.seek(1);
+      await manager.play();
+      vi.advanceTimersByTime(1000);
+      expect(manager.chartCurrentTimeMs).toBe(-4310 + 1000);
+      manager.closeAudio();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
