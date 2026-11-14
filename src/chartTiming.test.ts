@@ -2,6 +2,7 @@ import { scanChartFolder } from "scan-chart";
 import { describe, expect, it } from "vitest";
 import {
   getChartTiming,
+  getPreviewStartMs,
   readSongIniDelay,
   type ChartTimingMetadata,
 } from "./chartTiming";
@@ -53,7 +54,7 @@ const startDelayCases: {
 
 describe("getChartTiming start delay", () => {
   it.each(startDelayCases)("$name", ({ metadata, startDelayMs }) => {
-    expect(getChartTiming(metadata, LONG_AUDIO_MS).startDelayMs).toBe(startDelayMs);
+    expect(getChartTiming(metadata).startDelayMs).toBe(startDelayMs);
   });
 });
 
@@ -68,20 +69,15 @@ describe("getChartTiming preview start", () => {
     { name: "-1", preview: -1, delay: 0, expected: 20_000 },
     { name: "from .chart PreviewStart", preview: 12.345 * 1000, delay: 0, expected: 12_345 },
   ])("$name", ({ preview, delay, expected }) => {
-    const timing = getChartTiming(
-      { delay, chart_offset: 0, preview_start_time: preview },
-      LONG_AUDIO_MS
-    );
-    expect(timing.previewStartMs).toBe(expected);
+    const timing = getChartTiming({ delay, chart_offset: 0, preview_start_time: preview });
+    expect(getPreviewStartMs(timing, LONG_AUDIO_MS)).toBe(expected);
   });
 
   it("starts audio shorter than 20 seconds at the audio's start", () => {
     for (const preview of [5000, -1, undefined]) {
-      const timing = getChartTiming(
-        { delay: 1000, chart_offset: 0, preview_start_time: preview },
-        19_999
-      );
-      expect(timing.previewStartMs).toBe(-1000);
+      const timing = getChartTiming({ delay: 1000, chart_offset: 0, preview_start_time: preview });
+      expect(getPreviewStartMs(timing, 19_999)).toBe(-1000);
+      expect(getPreviewStartMs(timing, 20_000)).toBe(-1000 + (preview === 5000 ? 5000 : 20_000));
     }
   });
 });
@@ -125,6 +121,6 @@ describe("getChartTiming with scan-chart output", () => {
   ])("$name", ({ files, expected }) => {
     const scanned = scanChartFolder(files);
     const metadata = { ...scanned, songIniDelay: readSongIniDelay(files) };
-    expect(getChartTiming(metadata, LONG_AUDIO_MS).startDelayMs).toBe(expected);
+    expect(getChartTiming(metadata).startDelayMs).toBe(expected);
   });
 });

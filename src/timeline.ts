@@ -1,3 +1,5 @@
+import { getPreviewStartMs } from "./chartTiming";
+
 /**
  * A preview's timeline: from where the audio starts (or chart time 0, if the
  * audio starts later) to where the audio ends, in chart time.
@@ -40,17 +42,32 @@ export function timelineChartTimeMs(
 
 /**
  * Where a newly loaded preview starts, from 0 to 1. An `initialSeekPercent`
- * above 0 takes precedence over `previewStartMs`.
+ * above 0 takes precedence over `previewStartAudioMs`.
+ *
+ * @param preview The loaded preview, with its decoded audio length.
  */
 export function getInitialSeekPercent(
-  timeline: Timeline,
-  options: { initialSeekPercent?: number; previewStartMs?: number }
+  preview: Timeline & { audioLengthMs: number },
+  options: {
+    startDelayMs: number;
+    initialSeekPercent?: number;
+    previewStartAudioMs?: number;
+  }
 ): number {
   const percent =
     options.initialSeekPercent !== undefined && options.initialSeekPercent > 0
       ? options.initialSeekPercent
-      : options.previewStartMs !== undefined
-      ? timelineProgress(timeline, options.previewStartMs)
+      : options.previewStartAudioMs !== undefined
+      ? timelineProgress(
+          preview,
+          getPreviewStartMs(
+            {
+              startDelayMs: options.startDelayMs,
+              previewStartAudioMs: options.previewStartAudioMs,
+            },
+            preview.audioLengthMs
+          )
+        )
       : 0;
   return Math.max(0, Math.min(1, percent));
 }

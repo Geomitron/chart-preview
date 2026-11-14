@@ -8,7 +8,7 @@ import {
 } from "./timeline";
 
 // Ho Hey: the audio is 4.31 s in at chart time 0 and lasts 200 s.
-const audioFirst = { chartStartTimeMs: -4310, chartEndTimeMs: 195_690 };
+const audioFirst = { chartStartTimeMs: -4310, chartEndTimeMs: 195_690, audioLengthMs: 200_000 };
 // Audio that starts 2 s after chart time 0 and lasts 200 s.
 const audioLater = { chartStartTimeMs: 0, chartEndTimeMs: 202_000 };
 
@@ -35,15 +35,29 @@ describe("timeline math", () => {
 });
 
 describe("getInitialSeekPercent", () => {
+  const startDelayMs = -4310;
   it.each([
-    { name: "preview start", options: { previewStartMs: 95_690 }, expected: 0.5 },
-    { name: "preview start at chart time 0", options: { previewStartMs: 0 }, expected: 4310 / 200_000 },
-    { name: "initialSeekPercent wins", options: { initialSeekPercent: 0.25, previewStartMs: 95_690 }, expected: 0.25 },
-    { name: "initialSeekPercent of 0 defers", options: { initialSeekPercent: 0, previewStartMs: 95_690 }, expected: 0.5 },
+    { name: "preview start", options: { previewStartAudioMs: 100_000 }, expected: 0.5 },
+    { name: "preview start at the audio's start", options: { previewStartAudioMs: 0 }, expected: 0 },
+    { name: "initialSeekPercent wins", options: { initialSeekPercent: 0.25, previewStartAudioMs: 100_000 }, expected: 0.25 },
+    { name: "initialSeekPercent of 0 defers", options: { initialSeekPercent: 0, previewStartAudioMs: 100_000 }, expected: 0.5 },
     { name: "nothing set", options: {}, expected: 0 },
-    { name: "before the timeline", options: { previewStartMs: -10_000 }, expected: 0 },
-    { name: "after the timeline", options: { previewStartMs: 300_000 }, expected: 1 },
+    { name: "after the timeline", options: { previewStartAudioMs: 300_000 }, expected: 1 },
   ])("$name", ({ options, expected }) => {
-    expect(getInitialSeekPercent(audioFirst, options)).toBeCloseTo(expected, 12);
+    expect(getInitialSeekPercent(audioFirst, { startDelayMs, ...options })).toBeCloseTo(expected, 12);
+  });
+
+  it("applies the 20-second rule to the decoded audio length", () => {
+    // No song_length and a last note at 10 s give a 15 s estimate, but the
+    // decoded audio is 3 minutes long, so the preview starts 20 s in.
+    const preview = { chartStartTimeMs: 0, chartEndTimeMs: 180_000, audioLengthMs: 180_000 };
+    expect(
+      getInitialSeekPercent(preview, { startDelayMs: 0, previewStartAudioMs: 20_000 })
+    ).toBeCloseTo(20_000 / 180_000, 12);
+  });
+
+  it("starts audio shorter than 20 seconds at its beginning", () => {
+    const preview = { chartStartTimeMs: 0, chartEndTimeMs: 19_000, audioLengthMs: 19_000 };
+    expect(getInitialSeekPercent(preview, { startDelayMs: 0, previewStartAudioMs: 5000 })).toBe(0);
   });
 });

@@ -112,10 +112,10 @@ import { parseChartFile, scanChartFolder } from "scan-chart";
 // 1. Parse your chart file, and place its audio on the chart's timeline
 const parsedChart = parseChartFile(chartData, "chart", modifiers);
 const scannedChart = scanChartFolder(files);
-const { startDelayMs, previewStartMs } = getChartTiming(
-  { ...scannedChart, songIniDelay: readSongIniDelay(files) },
-  180000 // audio length in ms
-);
+const { startDelayMs, previewStartAudioMs } = getChartTiming({
+  ...scannedChart,
+  songIniDelay: readSongIniDelay(files),
+});
 
 // 2. Load textures (cache and reuse for same instrument type)
 const textures = await ChartPreview.loadTextures(getInstrumentType("guitar"), {
@@ -131,7 +131,7 @@ await player.loadChart({
   difficulty: "expert",
   startDelayMs,
   audioLengthMs: 180000,
-  previewStartMs, // Optional: start at the chart's preview start
+  previewStartAudioMs, // Optional: start at the chart's preview start
 });
 ```
 
@@ -145,7 +145,7 @@ The preview places a chart's audio and preview start the way Clone Hero does:
 
 The preview's timeline starts where the audio starts, so the seek bar covers all of the audio. When the audio starts after the chart does, the timeline starts at chart time 0 and the first notes play before the audio begins.
 
-The loaders apply these rules for you. When you pass pre-processed data, compute `startDelayMs` and `previewStartMs` with `getChartTiming()`, as in Option 4.
+The loaders apply these rules for you. When you pass pre-processed data, compute `startDelayMs` and `previewStartAudioMs` with `getChartTiming()`, as in Option 4. The player applies the 20-second rule to the decoded audio's length.
 
 ## Framework Integration
 
@@ -442,10 +442,10 @@ interface ChartPreviewPlayerConfig {
   /** Chart time, in ms, at which the audio starts (from getChartTiming) */
   startDelayMs: number;
   audioLengthMs: number;
-  /** Initial seek position (0-1); takes precedence over previewStartMs */
+  /** Initial seek position (0-1); takes precedence over previewStartAudioMs */
   initialSeekPercent?: number;
-  /** Chart time, in ms, to start at (from getChartTiming) */
-  previewStartMs?: number;
+  /** Audio position, in ms, to start at (from getChartTiming) */
+  previewStartAudioMs?: number;
 }
 ```
 
@@ -556,10 +556,10 @@ const nonVideoFiles = files.filter((f) => !isVideoFile(f.fileName));
 const preparedData = await prepareChartData(files, "guitar", "expert");
 
 // Place a scanned chart's audio and preview start on its timeline
-const { startDelayMs, previewStartMs } = getChartTiming(
-  { ...scannedChart, songIniDelay: readSongIniDelay(files) },
-  audioLengthMs
-);
+const { startDelayMs, previewStartAudioMs } = getChartTiming({
+  ...scannedChart,
+  songIniDelay: readSongIniDelay(files),
+});
 ```
 
 ## Development

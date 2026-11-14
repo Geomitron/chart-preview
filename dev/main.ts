@@ -472,13 +472,10 @@ loadBtn.addEventListener("click", async () => {
       .reduce((max, note) => Math.max(max, note.msTime + note.msLength), 0);
     const audioLengthMs = currentScannedChart.song_length || lastNote + 5000;
 
-    const { startDelayMs, previewStartMs } = getChartTiming(
-      {
-        ...currentScannedChart,
-        songIniDelay: readSongIniDelay(currentChartFiles),
-      },
-      audioLengthMs
-    );
+    const { startDelayMs, previewStartAudioMs } = getChartTiming({
+      ...currentScannedChart,
+      songIniDelay: readSongIniDelay(currentChartFiles),
+    });
 
     // Load the chart into the Web Component player
     setStatus("Creating preview...");
@@ -490,7 +487,7 @@ loadBtn.addEventListener("click", async () => {
       difficulty,
       startDelayMs,
       audioLengthMs,
-      previewStartMs,
+      previewStartAudioMs,
     });
 
     // Save selections

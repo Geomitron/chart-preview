@@ -37,15 +37,15 @@ export interface ChartPreviewPlayerConfig {
   audioLengthMs: ChartPreviewConfig["audioLengthMs"];
   /**
    * Initial seek position as a percentage (0-1). When it is above 0, it takes
-   * precedence over `previewStartMs`.
+   * precedence over `previewStartAudioMs`.
    */
   initialSeekPercent?: number;
   /**
-   * Chart time, in milliseconds, to start at. The loaders set it from the
-   * chart's preview start with `getChartTiming()`. Defaults to the start of
-   * the preview.
+   * Audio position, in milliseconds, to start at, from `getChartTiming()`.
+   * Audio shorter than 20 seconds starts at its beginning. Defaults to the
+   * start of the timeline.
    */
-  previewStartMs?: number;
+  previewStartAudioMs?: number;
 }
 
 // SVG Icons
@@ -960,7 +960,7 @@ export class ChartPreviewPlayer extends HTMLElement {
         startDelayMs: preparedData.startDelayMs,
         audioLengthMs: preparedData.audioLengthMs,
         initialSeekPercent: preparedData.initialSeekPercent,
-        previewStartMs: preparedData.previewStartMs,
+        previewStartAudioMs: preparedData.previewStartAudioMs,
       });
 
       this._currentAbortController = null;
@@ -1010,7 +1010,7 @@ export class ChartPreviewPlayer extends HTMLElement {
         startDelayMs: preparedData.startDelayMs,
         audioLengthMs: preparedData.audioLengthMs,
         initialSeekPercent: preparedData.initialSeekPercent,
-        previewStartMs: preparedData.previewStartMs,
+        previewStartAudioMs: preparedData.previewStartAudioMs,
       });
     } catch (error) {
       this.handleLoadError(error, "from .sng file");
@@ -1056,7 +1056,7 @@ export class ChartPreviewPlayer extends HTMLElement {
         startDelayMs: preparedData.startDelayMs,
         audioLengthMs: preparedData.audioLengthMs,
         initialSeekPercent: preparedData.initialSeekPercent,
-        previewStartMs: preparedData.previewStartMs,
+        previewStartAudioMs: preparedData.previewStartAudioMs,
       });
     } catch (error) {
       this.handleLoadError(error, "from files");
