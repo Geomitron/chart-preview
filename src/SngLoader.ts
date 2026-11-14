@@ -12,7 +12,7 @@ import {
   type LoadTexturesOptions,
   type ParsedChart,
 } from "./ChartPreview";
-import { getChartTiming, readSongIniDelay } from "./chartTiming";
+import { getChartTiming } from "./chartTiming";
 
 /**
  * Audio file extensions supported by the chart preview.
@@ -325,10 +325,7 @@ export async function prepareChartData(
     .reduce((max, note) => Math.max(max, note.msTime + note.msLength), 0);
   const audioLengthMs = scannedChart.song_length || lastNote + 5000;
 
-  const { startDelayMs, previewStartAudioMs } = getChartTiming({
-    ...scannedChart,
-    songIniDelay: readSongIniDelay(filteredFiles),
-  });
+  const { startDelayMs, previewStartAudioMs } = getChartTiming(filteredFiles);
 
   return {
     parsedChart,

@@ -4,7 +4,6 @@ import {
   extractSngFile,
   getChartTiming,
   getInstrumentType,
-  readSongIniDelay,
   type Difficulty,
   type Instrument,
 } from "../src";
@@ -472,10 +471,8 @@ loadBtn.addEventListener("click", async () => {
       .reduce((max, note) => Math.max(max, note.msTime + note.msLength), 0);
     const audioLengthMs = currentScannedChart.song_length || lastNote + 5000;
 
-    const { startDelayMs, previewStartAudioMs } = getChartTiming({
-      ...currentScannedChart,
-      songIniDelay: readSongIniDelay(currentChartFiles),
-    });
+    const { startDelayMs, previewStartAudioMs } =
+      getChartTiming(currentChartFiles);
 
     // Load the chart into the Web Component player
     setStatus("Creating preview...");

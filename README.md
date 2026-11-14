@@ -105,17 +105,13 @@ import {
   getChartTiming,
   getInstrumentType,
   areAnimationsSupported,
-  readSongIniDelay,
 } from "chart-preview";
 import { parseChartFile, scanChartFolder } from "scan-chart";
 
 // 1. Parse your chart file, and place its audio on the chart's timeline
 const parsedChart = parseChartFile(chartData, "chart", modifiers);
 const scannedChart = scanChartFolder(files);
-const { startDelayMs, previewStartAudioMs } = getChartTiming({
-  ...scannedChart,
-  songIniDelay: readSongIniDelay(files),
-});
+const { startDelayMs, previewStartAudioMs } = getChartTiming(files);
 
 // 2. Load textures (cache and reuse for same instrument type)
 const textures = await ChartPreview.loadTextures(getInstrumentType("guitar"), {
@@ -533,7 +529,6 @@ import {
   isVideoFile,
   areAnimationsSupported,
   getChartTiming,
-  readSongIniDelay,
 } from "chart-preview";
 
 // Check if animated textures are supported (ImageDecoder API)
@@ -556,10 +551,7 @@ const nonVideoFiles = files.filter((f) => !isVideoFile(f.fileName));
 const preparedData = await prepareChartData(files, "guitar", "expert");
 
 // Place a scanned chart's audio and preview start on its timeline
-const { startDelayMs, previewStartAudioMs } = getChartTiming({
-  ...scannedChart,
-  songIniDelay: readSongIniDelay(files),
-});
+const { startDelayMs, previewStartAudioMs } = getChartTiming(files);
 ```
 
 ## Development
