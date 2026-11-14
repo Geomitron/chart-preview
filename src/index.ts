@@ -29,6 +29,14 @@ export {
   type PreparedChartData,
 } from "./SngLoader";
 
+// Timing of a chart's audio and preview start
+export {
+  getChartTiming,
+  readSongIniDelay,
+  type ChartTiming,
+  type ChartTimingMetadata,
+} from "./chartTiming";
+
 // Re-export commonly used types from scan-chart for convenience
 export {
   type Difficulty,

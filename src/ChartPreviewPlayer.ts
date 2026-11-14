@@ -30,8 +30,17 @@ export interface ChartPreviewPlayerConfig {
   difficulty: ChartPreviewConfig["difficulty"];
   startDelayMs: ChartPreviewConfig["startDelayMs"];
   audioLengthMs: ChartPreviewConfig["audioLengthMs"];
-  /** Initial seek position as a percentage (0-1). Defaults to 0. */
+  /**
+   * Initial seek position as a percentage (0-1). When it is above 0, it takes
+   * precedence over `previewStartMs`.
+   */
   initialSeekPercent?: number;
+  /**
+   * Chart time, in milliseconds, to start at. The loaders set it from the
+   * chart's preview start with `getChartTiming()`. Defaults to the start of
+   * the preview.
+   */
+  previewStartMs?: number;
 }
 
 // SVG Icons
@@ -710,8 +719,8 @@ export class ChartPreviewPlayer extends HTMLElement {
       this.timestampEl.textContent = "0:00 / 0:00";
       return;
     }
-    const current = this.formatTime(this.chartPreview.chartCurrentTimeMs);
-    const total = this.formatTime(this.chartPreview.chartEndTimeMs);
+    const current = this.formatTime(this.currentTimeMs);
+    const total = this.formatTime(this.durationMs);
     this.timestampEl.textContent = `${current} / ${total}`;
   }
 
@@ -771,17 +780,21 @@ export class ChartPreviewPlayer extends HTMLElement {
   }
 
   /**
-   * Current playback position in milliseconds
+   * Current playback position in milliseconds, from the start of the preview
    */
   get currentTimeMs(): number {
-    return this.chartPreview?.chartCurrentTimeMs ?? 0;
+    if (!this.chartPreview) return 0;
+    return (
+      this.chartPreview.chartCurrentTimeMs - this.chartPreview.chartStartTimeMs
+    );
   }
 
   /**
    * Total duration in milliseconds
    */
   get durationMs(): number {
-    return this.chartPreview?.chartEndTimeMs ?? 0;
+    if (!this.chartPreview) return 0;
+    return this.chartPreview.chartEndTimeMs - this.chartPreview.chartStartTimeMs;
   }
 
   /**
@@ -853,8 +866,8 @@ export class ChartPreviewPlayer extends HTMLElement {
           new CustomEvent("player-progress", {
             detail: {
               percent,
-              currentMs: this.chartPreview!.chartCurrentTimeMs,
-              totalMs: this.chartPreview!.chartEndTimeMs,
+              currentMs: this.currentTimeMs,
+              totalMs: this.durationMs,
             },
             bubbles: true,
             composed: true,
@@ -874,15 +887,18 @@ export class ChartPreviewPlayer extends HTMLElement {
         );
       });
 
-      // Seek to initial position if provided
-      if (
-        config.initialSeekPercent !== undefined &&
-        config.initialSeekPercent > 0
-      ) {
-        await this.chartPreview.seek(config.initialSeekPercent);
-        this.seekBar.value = String(
-          Math.round(config.initialSeekPercent * 1000)
-        );
+      // Seek to the initial position, if any
+      const initialSeekPercent =
+        config.initialSeekPercent !== undefined && config.initialSeekPercent > 0
+          ? config.initialSeekPercent
+          : config.previewStartMs !== undefined
+          ? (config.previewStartMs - this.chartPreview.chartStartTimeMs) /
+            this.durationMs
+          : 0;
+      const clampedSeekPercent = Math.max(0, Math.min(1, initialSeekPercent));
+      if (clampedSeekPercent > 0) {
+        await this.chartPreview.seek(clampedSeekPercent);
+        this.seekBar.value = String(Math.round(clampedSeekPercent * 1000));
       }
 
       // Enable controls
@@ -942,6 +958,7 @@ export class ChartPreviewPlayer extends HTMLElement {
         startDelayMs: preparedData.startDelayMs,
         audioLengthMs: preparedData.audioLengthMs,
         initialSeekPercent: preparedData.initialSeekPercent,
+        previewStartMs: preparedData.previewStartMs,
       });
 
       this._currentAbortController = null;
@@ -991,6 +1008,7 @@ export class ChartPreviewPlayer extends HTMLElement {
         startDelayMs: preparedData.startDelayMs,
         audioLengthMs: preparedData.audioLengthMs,
         initialSeekPercent: preparedData.initialSeekPercent,
+        previewStartMs: preparedData.previewStartMs,
       });
     } catch (error) {
       this.handleLoadError(error, "from .sng file");
@@ -1036,6 +1054,7 @@ export class ChartPreviewPlayer extends HTMLElement {
         startDelayMs: preparedData.startDelayMs,
         audioLengthMs: preparedData.audioLengthMs,
         initialSeekPercent: preparedData.initialSeekPercent,
+        previewStartMs: preparedData.previewStartMs,
       });
     } catch (error) {
       this.handleLoadError(error, "from files");
@@ -1111,11 +1130,9 @@ export class ChartPreviewPlayer extends HTMLElement {
    */
   async seekRelative(deltaMs: number): Promise<void> {
     if (!this.chartPreview) return;
-    const currentMs = this.chartPreview.chartCurrentTimeMs;
-    const totalMs = this.chartPreview.chartEndTimeMs;
     const newPercent = Math.max(
       0,
-      Math.min(1, (currentMs + deltaMs) / totalMs)
+      Math.min(1, (this.currentTimeMs + deltaMs) / this.durationMs)
     );
     await this.seek(newPercent);
   }

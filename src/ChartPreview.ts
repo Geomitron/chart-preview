@@ -375,7 +375,11 @@ export interface ChartPreviewConfig {
   instrument: Instrument;
   /** The difficulty level to display */
   difficulty: Difficulty;
-  /** The amount of time to delay the start of the audio in milliseconds (can be negative) */
+  /**
+   * Chart time, in milliseconds, at which the audio starts playing. Negative
+   * when the audio is already playing at chart time 0 (a positive song.ini
+   * `delay`). Use `getChartTiming()` to compute it from a scanned chart.
+   */
   startDelayMs: number;
   /** The length of the longest audio file stem in milliseconds */
   audioLengthMs: number;
@@ -528,7 +532,8 @@ export class ChartPreview {
   }
 
   /**
-   * Moves the playback time to `percentComplete` of the way through the preview.
+   * Moves the playback time to `percentComplete` of the way from
+   * `chartStartTimeMs` to `chartEndTimeMs`.
    * @param percentComplete A number between 0 and 1 (inclusive)
    */
   async seek(percentComplete: number) {
@@ -549,12 +554,23 @@ export class ChartPreview {
     return this.audioManager.volume;
   }
 
-  /** Current playback position in milliseconds */
+  /**
+   * Current playback position as chart time in milliseconds. Negative while
+   * playing audio that comes before chart time 0.
+   */
   get chartCurrentTimeMs() {
     return this.audioManager.chartCurrentTimeMs;
   }
 
-  /** Total duration in milliseconds */
+  /**
+   * Chart time, in milliseconds, where the preview starts: where the audio
+   * starts, or chart time 0 if the audio starts later.
+   */
+  get chartStartTimeMs() {
+    return this.audioManager.chartStartTimeMs;
+  }
+
+  /** Chart time, in milliseconds, where the preview ends. */
   get chartEndTimeMs() {
     return this.audioManager.chartEndTimeMs;
   }
@@ -653,10 +669,11 @@ export class ChartPreview {
       const now = performance.now();
       if (now - this.lastProgressEmitTime >= this.progressIntervalMs) {
         this.lastProgressEmitTime = now;
+        const { chartStartTimeMs, chartEndTimeMs } = this.audioManager;
         this.eventEmitter.emit(
           "progress",
-          this.audioManager.chartCurrentTimeMs /
-            this.audioManager.chartEndTimeMs
+          (this.audioManager.chartCurrentTimeMs - chartStartTimeMs) /
+            (chartEndTimeMs - chartStartTimeMs)
         );
       }
     }
@@ -724,7 +741,7 @@ class ChartRenderer extends THREE.WebGLRenderer {
 interface AudioManagerEvents {
   end: () => void;
 }
-class AudioManager {
+export class AudioManager {
   private eventEmitter = new EventEmitter();
 
   private audioCtx: AudioContext;
@@ -753,7 +770,7 @@ class AudioManager {
 
   /**
    * @param audioFiles The `Uint8Array[]` of the audio files to be played.
-   * @param startDelayMs The amount of time to delay the start of the audio. (can be negative)
+   * @param startDelayMs Chart time at which the audio starts. (can be negative)
    * @param fallbackAudioLengthMs The fallback audio length to use if no audio files are provided.
    */
   static async create(
@@ -767,6 +784,7 @@ class AudioManager {
       fallbackAudioLengthMs
     );
     await audioManager.decodeAudioFiles();
+    await audioManager.seek(0);
     return audioManager;
   }
 
@@ -794,7 +812,7 @@ class AudioManager {
     return Math.sqrt(this._volume);
   }
 
-  /** Nonnegative number of milliseconds representing time elapsed since the chart preview start. */
+  /** Chart time in milliseconds. Negative while playing audio that comes before chart time 0. */
   get chartCurrentTimeMs() {
     // Use our own paused state since we share the AudioContext with other instances
     // and can't rely on audioCtx.state to determine this instance's state
@@ -809,17 +827,16 @@ class AudioManager {
     return this.lastSeekChartTimeMs + audioTimeSinceLastSeekMs - audioLatency;
   }
 
-  /** Nonnegative number of milliseconds representing when the audio ends (and when the chart preview ends). */
+  /** Chart time where the preview starts: the audio's start, or 0 if the audio starts later. */
+  get chartStartTimeMs() {
+    return Math.min(this.startDelayMs, 0);
+  }
+
+  /** Chart time when the audio ends (and when the chart preview ends). */
   get chartEndTimeMs() {
-    // Calculate the theoretical end time based on start delay + audio length
-    const theoreticalEndTime = this.startDelayMs + this.audioLengthMs;
-    // Ensure we always have a positive end time - use audio length as minimum if startDelay is extremely negative
-    // This handles edge cases where chart metadata has invalid/extreme delay values
-    return Math.max(
-      theoreticalEndTime,
-      this.audioLengthMs,
-      this.fallbackAudioLengthMs,
-      0
+    return (
+      this.startDelayMs +
+      Math.max(this.audioLengthMs, this.fallbackAudioLengthMs)
     );
   }
 
@@ -982,15 +999,16 @@ class AudioManager {
     // Stop existing audio sources
     this.stopAudioSources();
 
-    const chartSeekTimeMs = percentComplete * this.chartEndTimeMs;
-    this.lastSeekChartTimeMs = chartSeekTimeMs;
+    this.lastSeekChartTimeMs =
+      this.chartStartTimeMs +
+      percentComplete * (this.chartEndTimeMs - this.chartStartTimeMs);
     this.lastAudioCtxCurrentTime = this.audioCtx.currentTime;
     this._isPaused = true;
   }
 }
 
 /** Used if window.AudioContext || window.webkitAudioContext is undefined. */
-class SilentAudioManager {
+export class SilentAudioManager {
   private eventEmitter = new EventEmitter();
   private endEventTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -1004,7 +1022,7 @@ class SilentAudioManager {
   ) {}
 
   /**
-   * @param startDelayMs The amount of time to delay the start of the audio. (can be negative)
+   * @param startDelayMs Chart time at which the audio starts. (can be negative)
    * @param audioLengthMs The length of the longest audio file stem.
    */
   static async create(startDelayMs: number, audioLengthMs: number) {
@@ -1033,7 +1051,7 @@ class SilentAudioManager {
     return null;
   }
 
-  /** Nonnegative number of milliseconds representing time elapsed since the chart preview start. */
+  /** Chart time in milliseconds. Negative while before chart time 0. */
   get chartCurrentTimeMs() {
     if (this.isPaused) {
       return this.lastResumeChartTimeMs;
@@ -1045,17 +1063,19 @@ class SilentAudioManager {
       );
     }
   }
-  /** Nonnegative number of milliseconds representing when the audio ends (and when the chart preview ends). */
+  /** Chart time where the preview starts: the audio's start, or 0 if the audio starts later. */
+  get chartStartTimeMs() {
+    return Math.min(this.startDelayMs, 0);
+  }
+
+  /** Chart time when the audio ends (and when the chart preview ends). */
   get chartEndTimeMs() {
-    // Calculate the theoretical end time based on start delay + audio length
-    const theoreticalEndTime = this.startDelayMs + this.audioLengthMs;
-    // Ensure we always have a positive end time - use audio length as minimum if startDelay is extremely negative
-    return Math.max(theoreticalEndTime, this.audioLengthMs, 0);
+    return this.startDelayMs + this.audioLengthMs;
   }
 
   async play() {
     if (this.lastResumeChartTimeMs >= this.chartEndTimeMs - 2) {
-      this.lastResumeChartTimeMs = 0; // Restart at the end
+      this.lastResumeChartTimeMs = this.chartStartTimeMs; // Restart at the end
     }
     this.lastResumeClockTimeMs = performance.now();
     this.endEventTimeout = setTimeout(() => {
@@ -1084,7 +1104,9 @@ class SilentAudioManager {
    * @param percentComplete The progress between the start and end of the preview.
    */
   async seek(percentComplete: number) {
-    this.lastResumeChartTimeMs = this.chartEndTimeMs * percentComplete;
+    this.lastResumeChartTimeMs =
+      this.chartStartTimeMs +
+      percentComplete * (this.chartEndTimeMs - this.chartStartTimeMs);
 
     if (!this.isPaused) {
       this.play();

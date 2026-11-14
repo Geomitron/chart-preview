@@ -22,7 +22,8 @@
 		"build": "tsup src/index.ts --format cjs,esm --dts",
 		"release": "npm run build && changeset publish",
 		"dev": "vite dev",
-		"lint": "tsc"
+		"lint": "tsc",
+		"test": "vitest run"
 	},
 	"repository": {
 		"type": "git",
@@ -52,6 +53,7 @@
 		"@types/three": "^0.170.0",
 		"tsup": "^6.7.0",
 		"typescript": "^5.9.2",
-		"vite": "^6.1.0"
+		"vite": "^6.1.0",
+		"vitest": "^3.2.7"
 	}
 }

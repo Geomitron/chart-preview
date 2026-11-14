@@ -56,7 +56,7 @@ await player.loadFromUrl({
   url: "https://files.enchor.us/abc123.sng",
   instrument: "guitar",
   difficulty: "expert",
-  initialSeekPercent: 0.25, // Optional: start at 25%
+  initialSeekPercent: 0.25, // Optional: start at 25% instead of the chart's preview start
 });
 ```
 
@@ -102,13 +102,20 @@ For maximum control, you can pre-process the data yourself:
 import {
   ChartPreview,
   ChartPreviewPlayer,
+  getChartTiming,
   getInstrumentType,
   areAnimationsSupported,
+  readSongIniDelay,
 } from "chart-preview";
-import { parseChartFile } from "scan-chart";
+import { parseChartFile, scanChartFolder } from "scan-chart";
 
-// 1. Parse your chart file
+// 1. Parse your chart file, and place its audio on the chart's timeline
 const parsedChart = parseChartFile(chartData, "chart", modifiers);
+const scannedChart = scanChartFolder(files);
+const { startDelayMs, previewStartMs } = getChartTiming(
+  { ...scannedChart, songIniDelay: readSongIniDelay(files) },
+  180000 // audio length in ms
+);
 
 // 2. Load textures (cache and reuse for same instrument type)
 const textures = await ChartPreview.loadTextures(getInstrumentType("guitar"), {
@@ -122,10 +129,23 @@ await player.loadChart({
   audioFiles: [audioData],
   instrument: "guitar",
   difficulty: "expert",
-  startDelayMs: 0,
+  startDelayMs,
   audioLengthMs: 180000,
+  previewStartMs, // Optional: start at the chart's preview start
 });
 ```
+
+## Chart Timing
+
+The preview places a chart's audio and preview start the way Clone Hero does:
+
+- **song.ini `delay`** is how far into the audio, in milliseconds, chart time 0 is. A positive `delay` means the audio is already playing when the chart starts; a negative `delay` means the audio starts after the chart does. A value written with a decimal point, such as `0.33`, is in seconds.
+- **.chart `Offset`** is the same setting in seconds. It applies only when song.ini sets no `delay` or a `delay` of 0; the two are never added.
+- **song.ini `preview_start_time`** is how far into the audio, in milliseconds, the preview starts. When it is missing or -1, the preview starts 20 seconds into the audio. Audio shorter than 20 seconds always previews from its start.
+
+The preview's timeline starts where the audio starts, so the seek bar covers all of the audio. When the audio starts after the chart does, the timeline starts at chart time 0 and the first notes play before the audio begins.
+
+The loaders apply these rules for you. When you pass pre-processed data, compute `startDelayMs` and `previewStartMs` with `getChartTiming()`, as in Option 4.
 
 ## Framework Integration
 
@@ -261,7 +281,7 @@ A complete chart preview player with built-in controls.
 | `state`         | `PlayerState` | Current player state            |
 | `isPlaying`     | `boolean`     | Whether currently playing       |
 | `volume`        | `number`      | Current volume (0-100)          |
-| `currentTimeMs` | `number`      | Current playback position in ms |
+| `currentTimeMs` | `number`      | Playback position in ms from the start of the timeline |
 | `durationMs`    | `number`      | Total duration in ms            |
 | `isFullscreen`  | `boolean`     | Whether in fullscreen mode      |
 
@@ -367,7 +387,7 @@ interface LoadFromUrlConfig {
   instrument: Instrument;
   /** The difficulty level to display */
   difficulty: Difficulty;
-  /** Initial seek position (0-1). Defaults to 0 */
+  /** Initial seek position (0-1). Defaults to the chart's preview start */
   initialSeekPercent?: number;
   /** AbortSignal to cancel the fetch operation */
   signal?: AbortSignal;
@@ -386,7 +406,7 @@ interface LoadFromSngFileConfig {
   instrument: Instrument;
   /** The difficulty level to display */
   difficulty: Difficulty;
-  /** Initial seek position (0-1). Defaults to 0 */
+  /** Initial seek position (0-1). Defaults to the chart's preview start */
   initialSeekPercent?: number;
   /** Whether to enable animated textures. Defaults to true */
   animationsEnabled?: boolean;
@@ -403,7 +423,7 @@ interface LoadFromChartFilesConfig {
   instrument: Instrument;
   /** The difficulty level to display */
   difficulty: Difficulty;
-  /** Initial seek position (0-1). Defaults to 0 */
+  /** Initial seek position (0-1). Defaults to the chart's preview start */
   initialSeekPercent?: number;
   /** Whether to enable animated textures. Defaults to true */
   animationsEnabled?: boolean;
@@ -419,9 +439,13 @@ interface ChartPreviewPlayerConfig {
   audioFiles: Uint8Array[];
   instrument: Instrument;
   difficulty: Difficulty;
+  /** Chart time, in ms, at which the audio starts (from getChartTiming) */
   startDelayMs: number;
   audioLengthMs: number;
+  /** Initial seek position (0-1); takes precedence over previewStartMs */
   initialSeekPercent?: number;
+  /** Chart time, in ms, to start at (from getChartTiming) */
+  previewStartMs?: number;
 }
 ```
 
@@ -479,6 +503,8 @@ const preview = await ChartPreview.create({
   audioLengthMs: 180000,
   container: document.getElementById("container"),
 });
+// preview.chartStartTimeMs and preview.chartEndTimeMs bound the timeline;
+// preview.chartCurrentTimeMs is negative while playing audio before chart time 0.
 
 // Control playback
 await preview.togglePaused();
@@ -506,6 +532,8 @@ import {
   findAudioFiles,
   isVideoFile,
   areAnimationsSupported,
+  getChartTiming,
+  readSongIniDelay,
 } from "chart-preview";
 
 // Check if animated textures are supported (ImageDecoder API)
@@ -526,6 +554,12 @@ const nonVideoFiles = files.filter((f) => !isVideoFile(f.fileName));
 
 // Prepare all data for playback
 const preparedData = await prepareChartData(files, "guitar", "expert");
+
+// Place a scanned chart's audio and preview start on its timeline
+const { startDelayMs, previewStartMs } = getChartTiming(
+  { ...scannedChart, songIniDelay: readSongIniDelay(files) },
+  audioLengthMs
+);
 ```
 
 ## Development
@@ -542,6 +576,9 @@ npm run build
 
 # Type check
 npm run lint
+
+# Run tests
+npm test
 ```
 
 ## Browser Compatibility
