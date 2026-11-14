@@ -30,6 +30,12 @@ const startDelayCases: {
   { name: "fractional delay truncates", metadata: { delay: 0, songIniDelay: "0.0019" }, startDelayMs: -1 },
   { name: "delay with a decimal point is seconds", metadata: { delay: 4310, songIniDelay: "4310.0" }, startDelayMs: -4_310_000 },
   { name: "unreadable delay", metadata: { delay: 0, songIniDelay: "abc" }, startDelayMs: 0 },
+  { name: "largest 32-bit delay", metadata: { delay: 0, songIniDelay: "2147483647" }, startDelayMs: -2147483647 },
+  { name: "smallest 32-bit delay", metadata: { delay: 0, songIniDelay: "-2147483648" }, startDelayMs: 2147483648 },
+  { name: "delay above the 32-bit range", metadata: { delay: 0, songIniDelay: "2147483648" }, startDelayMs: 0 },
+  { name: "delay below the 32-bit range", metadata: { delay: 0, songIniDelay: "-2147483649" }, startDelayMs: 0 },
+  { name: "seconds above the 32-bit range", metadata: { delay: 0, songIniDelay: "3000000.0" }, startDelayMs: 0 },
+  { name: "malformed seconds", metadata: { delay: 0, songIniDelay: "1.2.3" }, startDelayMs: 0 },
   { name: "empty delay uses .chart Offset", metadata: { delay: 0, chart_offset: 500, songIniDelay: "" }, startDelayMs: -500 },
   { name: "fractional delay wins over .chart Offset", metadata: { delay: 0, chart_offset: 500, songIniDelay: "0.25" }, startDelayMs: -250 },
   { name: "positive .chart Offset", metadata: { delay: 0, chart_offset: 0.33 * 1000 }, startDelayMs: -330 },
@@ -118,6 +124,11 @@ describe("getChartTiming with scan-chart output", () => {
     { name: "song.ini delay with .chart Offset", files: [chartFile("0.33"), songIni(["delay = 4310"])], expected: -4310 },
     { name: "fractional song.ini delay", files: [chartFile("0"), songIni(["delay = 0.33"])], expected: -330 },
     { name: "song.ini delay of 0 with .chart Offset", files: [chartFile("0.33"), songIni(["delay = 0"])], expected: -330 },
+    { name: "repeated song.ini delay uses the last", files: [chartFile("0"), songIni(["delay = 100", "delay = 4310"])], expected: -4310 },
+    { name: "repeated song.ini delay ending in 0 uses .chart Offset", files: [chartFile("0.33"), songIni(["delay = 4310", "delay = 0"])], expected: -330 },
+    { name: "commented-out song.ini delay", files: [chartFile("0"), songIni(["delay = 4310", "; delay = 100", "# delay = 200"])], expected: -4310 },
+    { name: "song.ini delay in another section", files: [chartFile("0"), songIni(["delay = 4310", "[other]", "delay = 100"])], expected: -4310 },
+    { name: "unclosed bracket is not a section", files: [chartFile("0"), songIni(["[other", "delay = 4310"])], expected: -4310 },
   ])("$name", ({ files, expected }) => {
     const scanned = scanChartFolder(files);
     const metadata = { ...scanned, songIniDelay: readSongIniDelay(files) };
