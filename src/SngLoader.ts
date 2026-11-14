@@ -12,6 +12,7 @@ import {
   type LoadTexturesOptions,
   type ParsedChart,
 } from "./ChartPreview";
+import { getChartTiming, readSongIniDelay } from "./chartTiming";
 
 /**
  * Audio file extensions supported by the chart preview.
@@ -33,7 +34,10 @@ export interface LoadFromUrlConfig {
   instrument: Instrument;
   /** The difficulty level to display */
   difficulty: Difficulty;
-  /** Initial seek position as a percentage (0-1). Defaults to 0. */
+  /**
+   * Initial seek position as a percentage (0-1). Defaults to the chart's
+   * preview start, as Clone Hero sets it.
+   */
   initialSeekPercent?: number;
   /** AbortSignal to cancel the fetch operation */
   signal?: AbortSignal;
@@ -54,7 +58,10 @@ export interface LoadFromSngFileConfig {
   instrument: Instrument;
   /** The difficulty level to display */
   difficulty: Difficulty;
-  /** Initial seek position as a percentage (0-1). Defaults to 0. */
+  /**
+   * Initial seek position as a percentage (0-1). Defaults to the chart's
+   * preview start, as Clone Hero sets it.
+   */
   initialSeekPercent?: number;
   /**
    * Whether to enable animated textures. Defaults to true.
@@ -73,7 +80,10 @@ export interface LoadFromChartFilesConfig {
   instrument: Instrument;
   /** The difficulty level to display */
   difficulty: Difficulty;
-  /** Initial seek position as a percentage (0-1). Defaults to 0. */
+  /**
+   * Initial seek position as a percentage (0-1). Defaults to the chart's
+   * preview start, as Clone Hero sets it.
+   */
   initialSeekPercent?: number;
   /**
    * Whether to enable animated textures. Defaults to true.
@@ -91,9 +101,13 @@ export interface PreparedChartData {
   audioFiles: Uint8Array[];
   instrument: Instrument;
   difficulty: Difficulty;
+  /** Chart time, in milliseconds, at which the audio starts playing */
   startDelayMs: number;
   audioLengthMs: number;
+  /** The caller's initial seek position (0-1), or 0 if it gave none */
   initialSeekPercent: number;
+  /** Chart time, in milliseconds, of the chart's preview start */
+  previewStartMs: number;
 }
 
 /**
@@ -236,7 +250,7 @@ export function isVideoFile(fileName: string): boolean {
  * @param files - Array of extracted files
  * @param instrument - The instrument to display
  * @param difficulty - The difficulty level to display
- * @param initialSeekPercent - Initial seek position (0-1)
+ * @param initialSeekPercent - Initial seek position (0-1); 0 starts at the chart's preview start
  * @param textureOptions - Options for texture loading (e.g., animations enabled)
  * @returns Prepared chart data ready for the player
  */
@@ -308,17 +322,10 @@ export async function prepareChartData(
     .reduce((max, note) => Math.max(max, note.msTime + note.msLength), 0);
   const audioLengthMs = scannedChart.song_length || lastNote + 5000;
 
-  // Calculate start delay from chart metadata
-  const startDelayMs =
-    (scannedChart.delay || 0) + (scannedChart.chart_offset || 0) * 1000;
-
-  // Calculate initial seek position from preview_start_time if not explicitly provided
-  const seekPercent =
-    initialSeekPercent > 0
-      ? initialSeekPercent
-      : scannedChart.preview_start_time
-      ? scannedChart.preview_start_time / audioLengthMs
-      : 0;
+  const { startDelayMs, previewStartMs } = getChartTiming(
+    { ...scannedChart, songIniDelay: readSongIniDelay(filteredFiles) },
+    audioLengthMs
+  );
 
   return {
     parsedChart,
@@ -328,7 +335,8 @@ export async function prepareChartData(
     difficulty,
     startDelayMs,
     audioLengthMs,
-    initialSeekPercent: seekPercent,
+    initialSeekPercent,
+    previewStartMs,
   };
 }
 

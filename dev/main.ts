@@ -2,7 +2,9 @@ import {
   ChartPreview,
   ChartPreviewPlayer,
   extractSngFile,
+  getChartTiming,
   getInstrumentType,
+  readSongIniDelay,
   type Difficulty,
   type Instrument,
 } from "../src";
@@ -470,22 +472,13 @@ loadBtn.addEventListener("click", async () => {
       .reduce((max, note) => Math.max(max, note.msTime + note.msLength), 0);
     const audioLengthMs = currentScannedChart.song_length || lastNote + 5000;
 
-    // Get start delay from chart metadata
-    // delay takes priority over chart_offset if both are present
-    // Both use the same sign convention:
-    //   - Positive value = audio starts earlier (audio is ahead of chart time)
-    //   - Negative value = audio starts later (audio is delayed)
-    // We negate to convert to startDelayMs (internal representation):
-    //   - startDelayMs < 0 = audio is ahead (at chart time 0, audio is already playing)
-    //   - startDelayMs > 0 = audio is delayed (audio starts after chart time 0)
-    const startDelayMs = currentScannedChart.delay
-      ? -currentScannedChart.delay
-      : -(currentScannedChart.chart_offset || 0);
-
-    // Calculate initial seek position from preview_start_time if available
-    const initialSeekPercent = currentScannedChart.preview_start_time
-      ? currentScannedChart.preview_start_time / audioLengthMs
-      : 0;
+    const { startDelayMs, previewStartMs } = getChartTiming(
+      {
+        ...currentScannedChart,
+        songIniDelay: readSongIniDelay(currentChartFiles),
+      },
+      audioLengthMs
+    );
 
     // Load the chart into the Web Component player
     setStatus("Creating preview...");
@@ -497,7 +490,7 @@ loadBtn.addEventListener("click", async () => {
       difficulty,
       startDelayMs,
       audioLengthMs,
-      initialSeekPercent,
+      previewStartMs,
     });
 
     // Save selections
